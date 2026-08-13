@@ -1,0 +1,20 @@
+# Environment
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Data (large files — commit only fixtures, not downloads)
+data/samples/*.wav
+data/samples/*.mp3
+data/samples/*.mp4
+data/samples/*.rttm
+data/results/
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
