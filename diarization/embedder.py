@@ -18,7 +18,7 @@ def _get_pipeline() -> Pipeline:
             raise EnvironmentError("HF_TOKEN not set — check your .env file")
         _pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=token,
+            token=token,
         )
     return _pipeline
 
@@ -27,9 +27,10 @@ def diarise(audio: np.ndarray, sample_rate: int = 16_000) -> list[tuple[str, flo
     pipeline = _get_pipeline()
 
     waveform = torch.from_numpy(audio).unsqueeze(0)
-    result = pipeline({"waveform": waveform, "sample_rate": sample_rate})
+    output = pipeline({"waveform": waveform, "sample_rate": sample_rate})
+    annotation = output.speaker_diarization
 
     return [
         (str(speaker), round(segment.start, 3), round(segment.end, 3))
-        for segment, _, speaker in result.itertracks(yield_label=True)
+        for segment, _, speaker in annotation.itertracks(yield_label=True)
     ]

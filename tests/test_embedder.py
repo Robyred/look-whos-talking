@@ -9,15 +9,19 @@ import diarization.embedder as embedder_module
 
 def make_fake_pipeline_result(segments):
     """
-    Build a mock object that behaves like pyannote's Annotation.
+    Build a mock object that behaves like pyannote's DiarizeOutput.
+    The pipeline now returns DiarizeOutput with a .speaker_diarization
+    attribute that is the Annotation with itertracks().
     segments: list of (speaker_label, start, end)
     """
-    mock_result = MagicMock()
-    mock_result.itertracks.return_value = [
+    mock_annotation = MagicMock()
+    mock_annotation.itertracks.return_value = [
         (MagicMock(start=start, end=end), None, speaker)
         for speaker, start, end in segments
     ]
-    return mock_result
+    mock_output = MagicMock()
+    mock_output.speaker_diarization = mock_annotation
+    return mock_output
 
 
 def make_audio(duration_sec: float = 30.0) -> np.ndarray:
