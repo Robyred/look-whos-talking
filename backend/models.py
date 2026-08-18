@@ -1,4 +1,13 @@
+from enum import Enum
+
 from pydantic import BaseModel
+
+
+class JobStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETE = "complete"
+    FAILED = "failed"
 
 
 class SpeakerResponse(BaseModel):
@@ -16,6 +25,19 @@ class DiarizationResponse(BaseModel):
     speech_sec: float
     silence_sec: float
     timeline: list[tuple[str, float, float]]
+
+
+class JobResponse(BaseModel):
+    job_id: str
+    status: JobStatus
+
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    filename: str
+    status: JobStatus
+    error: str | None = None
+    result: DiarizationResponse | None = None
 
 
 class ConversationSummary(BaseModel):
