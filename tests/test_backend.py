@@ -48,7 +48,7 @@ def patch_dirs(tmp_path):
 
 def submit_file(filename="test.wav", duration=10.0):
     return client.post(
-        "/diarize",
+        "/api/diarize",
         files={"file": (filename, make_wav_bytes(duration), "audio/wav")},
     )
 
@@ -56,7 +56,7 @@ def submit_file(filename="test.wav", duration=10.0):
 def wait_for_terminal(job_id: str, timeout: float = 10.0) -> dict:
     deadline = time.time() + timeout
     while time.time() < deadline:
-        r = client.get(f"/jobs/{job_id}")
+        r = client.get(f"/api/jobs/{job_id}")
         body = r.json()
         if body["status"] in ("complete", "failed"):
             return body
@@ -100,7 +100,7 @@ def test_complete_job_has_filename():
 
 
 def test_unknown_job_returns_404():
-    r = client.get("/jobs/does-not-exist")
+    r = client.get("/api/jobs/does-not-exist")
     assert r.status_code == 404
 
 
@@ -121,7 +121,7 @@ def test_conversations_lists_completed_jobs():
     submit_file("b.wav")
     # wait for both
     time.sleep(1.0)
-    r = client.get("/conversations")
+    r = client.get("/api/conversations")
     assert r.status_code == 200
     names = {c["filename"] for c in r.json()["conversations"]}
     assert "a.wav" in names
@@ -133,7 +133,7 @@ def test_silent_audio_fails_job():
     buf = io.BytesIO()
     sf.write(buf, silent, SAMPLE_RATE, format="WAV")
     r = client.post(
-        "/diarize",
+        "/api/diarize",
         files={"file": ("silent.wav", buf.getvalue(), "audio/wav")},
     )
     job_id = r.json()["job_id"]
