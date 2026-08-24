@@ -16,6 +16,13 @@ class SpeakerResponse(BaseModel):
     percentage: float
 
 
+class TranscriptSegment(BaseModel):
+    speaker_id: str
+    start: float
+    end: float
+    text: str
+
+
 class DiarizationResponse(BaseModel):
     filename: str
     total_duration_sec: float
@@ -25,6 +32,7 @@ class DiarizationResponse(BaseModel):
     speech_sec: float
     silence_sec: float
     timeline: list[tuple[str, float, float]]
+    transcript: list[TranscriptSegment] = []
 
 
 class JobResponse(BaseModel):

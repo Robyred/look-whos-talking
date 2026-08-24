@@ -12,10 +12,12 @@ from backend.models import (
     JobStatus,
     JobStatusResponse,
     SpeakerResponse,
+    TranscriptSegment,
 )
 from backend.storage import list_conversations, save_result
 from diarization.embedder import diarise
 from metrics.calculator import calculate_metrics
+from transcription.transcriber import transcribe
 
 router = APIRouter()
 
@@ -28,6 +30,8 @@ def _run_pipeline(job_id: str, audio_path: Path, filename: str) -> None:
         timeline = diarise(audio)
         total_duration = len(audio) / SAMPLE_RATE
         metrics = calculate_metrics(timeline, total_duration)
+
+        utterances = transcribe(audio, timeline)
 
         result = DiarizationResponse(
             filename=filename,
@@ -45,6 +49,15 @@ def _run_pipeline(job_id: str, audio_path: Path, filename: str) -> None:
             speech_sec=metrics.speech_sec,
             silence_sec=metrics.silence_sec,
             timeline=timeline,
+            transcript=[
+                TranscriptSegment(
+                    speaker_id=u["speaker_id"],
+                    start=u["start"],
+                    end=u["end"],
+                    text=u["text"],
+                )
+                for u in utterances
+            ],
         )
         save_result(result)
         update_job(job_id, JobStatus.COMPLETE, result=result)

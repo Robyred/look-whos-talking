@@ -143,6 +143,28 @@
       font-size: 0.875rem;
     }
 
+    /* Transcript */
+    .transcript {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-height: 20rem;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+    .utterance { display: flex; gap: 0.75rem; }
+    .utt-speaker {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      padding-top: 0.15rem;
+      min-width: 80px;
+    }
+    .utt-text { font-size: 0.875rem; line-height: 1.6; color: #cbd5e1; }
+    .utt-time { font-size: 0.7rem; color: #475569; margin-top: 0.2rem; }
+
     .hidden { display: none !important; }
   </style>
 </head>
@@ -193,6 +215,12 @@
       </div>
     </div>
     <div class="speaker-list" id="speaker-list"></div>
+  </div>
+
+  <!-- Transcript -->
+  <div class="card hidden" id="transcript-card">
+    <h2 style="font-size:1rem;font-weight:600;margin-bottom:1rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Transcript</h2>
+    <div class="transcript" id="transcript"></div>
   </div>
 
   <!-- Past conversations -->
@@ -325,6 +353,32 @@
     });
 
     resultCard.classList.remove('hidden');
+
+    // Build speaker colour map by index in sorted order
+    const speakerColors = {};
+    result.speakers.forEach((s, i) => { speakerColors[s.speaker_id] = COLORS[i % COLORS.length]; });
+
+    // Transcript
+    const transcriptCard = document.getElementById('transcript-card');
+    const transcriptEl   = document.getElementById('transcript');
+    if (result.transcript && result.transcript.length) {
+      transcriptEl.innerHTML = '';
+      result.transcript.forEach(u => {
+        const color = speakerColors[u.speaker_id] || COLORS[0];
+        transcriptEl.innerHTML += `
+          <div class="utterance">
+            <div>
+              <div class="utt-speaker" style="color:${color}">${u.speaker_id}</div>
+              <div class="utt-time">${fmt(u.start)}</div>
+            </div>
+            <div class="utt-text">${u.text}</div>
+          </div>`;
+      });
+      transcriptCard.classList.remove('hidden');
+    } else {
+      transcriptCard.classList.add('hidden');
+    }
+
     submitBtn.disabled = false;
   }
 
