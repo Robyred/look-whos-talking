@@ -17,9 +17,15 @@ def _get_model():
 def transcribe(
     audio: np.ndarray,
     timeline: list[tuple[str, float, float]],
+    language: str | None = None,
 ) -> list[dict]:
     """
     Return a list of utterance dicts: {speaker_id, start, end, text}.
+
+    language: ISO 639-1 code (e.g. "en", "fr"). Pass None to auto-detect.
+      Auto-detection is unreliable on short clips — accented English is
+      frequently misclassified as Welsh, Irish, etc. Pass an explicit
+      language code whenever it is known.
 
     Steps:
       1. Run faster-whisper to get word-level transcription.
@@ -31,7 +37,10 @@ def transcribe(
 
     # whisperx expects float32 numpy audio
     audio_f32 = audio.astype(np.float32)
-    result = model.transcribe(audio_f32, batch_size=8)
+    kwargs = {"batch_size": 8}
+    if language:
+        kwargs["language"] = language
+    result = model.transcribe(audio_f32, **kwargs)
 
     # Step 2: align to get word-level timestamps.
     # Falls back to segment-level timestamps if no alignment model exists for
