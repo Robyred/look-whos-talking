@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     git \
     sox \
+    libsox-fmt-all \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
