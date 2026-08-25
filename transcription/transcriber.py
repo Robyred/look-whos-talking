@@ -1,7 +1,6 @@
 import os
 
 import numpy as np
-import whisperx
 
 SAMPLE_RATE = 16_000
 _model = None
@@ -10,10 +9,8 @@ _model = None
 def _get_model():
     global _model
     if _model is None:
-        # "small" is accurate enough for clean speech and fits in ~1 GB RAM.
-        # device="cpu" works everywhere; change to "cuda" if a GPU is available.
-        # WHISPER_CACHE points to a persistent volume on Railway so the model
-        # survives container restarts without re-downloading.
+        import whisperx
+
         cache_dir = os.getenv("WHISPER_CACHE")
         _model = whisperx.load_model(
             "small", device="cpu", compute_type="int8", download_root=cache_dir
@@ -53,10 +50,12 @@ def transcribe(
     # Falls back to segment-level timestamps if no alignment model exists for
     # the detected language (e.g. Welsh, minority languages).
     try:
-        align_model, metadata = whisperx.load_align_model(
+        import whisperx as _wx
+
+        align_model, metadata = _wx.load_align_model(
             language_code=result["language"], device="cpu"
         )
-        aligned = whisperx.align(
+        aligned = _wx.align(
             result["segments"], align_model, metadata, audio_f32, device="cpu"
         )
         word_segments = aligned["word_segments"]

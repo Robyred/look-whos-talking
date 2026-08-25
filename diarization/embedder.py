@@ -1,18 +1,19 @@
 import os
-from dotenv import load_dotenv
 
 import numpy as np
-import torch
-from pyannote.audio import Pipeline
+from dotenv import load_dotenv
 
 load_dotenv()
 
 _pipeline = None
 
 
-def _get_pipeline() -> Pipeline:
+def _get_pipeline():
     global _pipeline
     if _pipeline is None:
+        import torch
+        from pyannote.audio import Pipeline
+
         token = os.getenv("HF_TOKEN")
         if not token:
             raise EnvironmentError("HF_TOKEN not set — check your .env file")
@@ -24,6 +25,8 @@ def _get_pipeline() -> Pipeline:
 
 
 def diarise(audio: np.ndarray, sample_rate: int = 16_000) -> list[tuple[str, float, float]]:
+    import torch
+
     pipeline = _get_pipeline()
 
     waveform = torch.from_numpy(audio).unsqueeze(0)
