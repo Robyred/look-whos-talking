@@ -19,6 +19,12 @@ RUN pip install --no-cache-dir --force-reinstall \
     torch==2.11.0 torchaudio==2.11.0 torchvision==0.26.0 \
     --index-url https://download.pytorch.org/whl/cpu
 
+# Remove the legacy system-sox backend. TORCHAUDIO_USE_SOX=0 is not
+# respected by this torchaudio version, so we delete the file directly.
+# torchaudio falls back to the ffmpeg backend (installed above).
+RUN find /usr/local/lib/python3.11/site-packages/torchaudio/lib/ \
+    -name "_torchaudio_sox.so" -delete
+
 # Copy application code (see .dockerignore for what is excluded)
 COPY . .
 
