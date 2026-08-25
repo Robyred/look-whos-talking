@@ -9,15 +9,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install CPU-only torch first — keeps the image ~2 GB lighter than the
-# CUDA build. Railway Hobby is CPU-only so CUDA would go unused anyway.
-RUN pip install --no-cache-dir \
-    torch==2.11.0 torchaudio==2.11.0 torchvision==0.26.0 \
-    --index-url https://download.pytorch.org/whl/cpu
-
-# Install the rest of the dependencies
+# Install dependencies first, then force-reinstall our pinned CPU torch build
+# on top. whisperx declares a torch version constraint that pip would otherwise
+# satisfy by downgrading torch — which breaks torchaudio (ABI mismatch).
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+RUN pip install --no-cache-dir --force-reinstall \
+    torch==2.11.0 torchaudio==2.11.0 torchvision==0.26.0 \
+    --index-url https://download.pytorch.org/whl/cpu
 
 # Copy application code (see .dockerignore for what is excluded)
 COPY . .
