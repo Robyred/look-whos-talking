@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import whisperx
 
@@ -10,7 +12,12 @@ def _get_model():
     if _model is None:
         # "small" is accurate enough for clean speech and fits in ~1 GB RAM.
         # device="cpu" works everywhere; change to "cuda" if a GPU is available.
-        _model = whisperx.load_model("small", device="cpu", compute_type="int8")
+        # WHISPER_CACHE points to a persistent volume on Railway so the model
+        # survives container restarts without re-downloading.
+        cache_dir = os.getenv("WHISPER_CACHE")
+        _model = whisperx.load_model(
+            "small", device="cpu", compute_type="int8", download_root=cache_dir
+        )
     return _model
 
 

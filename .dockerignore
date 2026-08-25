@@ -1,0 +1,11 @@
+.venv/
+data/
+.git/
+.env
+__pycache__/
+*.pyc
+*.pyo
+Jack's documentation etc/
+.claude/
+.idea/
+.vscode/
