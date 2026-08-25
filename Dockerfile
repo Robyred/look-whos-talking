@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # The CPU-only torchaudio whl omits bundled libsox; the PyPI wheel includes it.
 RUN pip install --no-cache-dir --force-reinstall \
     torch==2.11.0 \
+    torchvision==0.26.0 \
     --index-url https://download.pytorch.org/whl/cpu
 
 # Copy application code (see .dockerignore for what is excluded)
