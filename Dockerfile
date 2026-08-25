@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     ffmpeg \
     git \
+    sox \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -15,13 +16,14 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Only force-reinstall torch to the CPU build — torchaudio is intentionally
-# left as the standard PyPI wheel (installed above via requirements.txt).
-# The CPU-only torchaudio whl omits bundled libsox; the PyPI wheel includes it.
 RUN pip install --no-cache-dir --force-reinstall \
-    torch==2.11.0 \
-    torchvision==0.26.0 \
+    torch==2.11.0 torchaudio==2.11.0 torchvision==0.26.0 \
     --index-url https://download.pytorch.org/whl/cpu
+
+# Diagnostic: show which libraries _torchaudio_sox.so needs at link time.
+# Check the Railway build log for any lines marked "not found".
+RUN ldd /usr/local/lib/python3.11/site-packages/torchaudio/lib/_torchaudio_sox.so \
+    2>&1 || echo "(ldd finished)"
 
 # Copy application code (see .dockerignore for what is excluded)
 COPY . .
@@ -34,9 +36,6 @@ RUN mkdir -p data/jobs data/uploads data/results
 # they survive container restarts and don't need to be re-downloaded.
 ENV HF_HOME=/model_cache
 ENV WHISPER_CACHE=/model_cache/whisper
-# Disable torchaudio's legacy system-sox backend (deprecated, requires system
-# libsox). ffmpeg is installed above and torchaudio will use it instead.
-ENV TORCHAUDIO_USE_SOX=0
 
 # Railway injects $PORT. No EXPOSE directive — Railway routes via $PORT
 # exclusively and a hardcoded EXPOSE can mislead the platform.
