@@ -31,5 +31,6 @@ RUN mkdir -p data/jobs data/uploads data/results
 ENV HF_HOME=/model_cache
 ENV WHISPER_CACHE=/model_cache/whisper
 
-# Railway injects $PORT; fall back to 8765 for local docker run
+# Railway injects $PORT. No EXPOSE directive — Railway routes via $PORT
+# exclusively and a hardcoded EXPOSE can mislead the platform.
 CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8765}"]
