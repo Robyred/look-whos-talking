@@ -5,14 +5,11 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Data (large files — commit only fixtures, not downloads)
-data/uploads/
-data/jobs/
-data/samples/*.wav
-data/samples/*.mp3
-data/samples/*.mp4
-data/samples/*.rttm
-data/results/
+# Data (large files — nothing in data/ should be committed)
+data/
+
+# Personal docs
+Jack's documentation etc/
 
 # Editors
 .vscode/
