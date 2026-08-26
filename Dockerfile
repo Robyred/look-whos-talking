@@ -11,19 +11,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# torch and torchvision: CPU-only build to avoid the ~2 GB CUDA overhead.
+# torchaudio: force-reinstall from PyPI at the exact same version so it
+# ships with bundled libsox (_torchaudio_sox.so). The CPU whl omits that
+# file but the PyPI wheel includes it. Both are built from the same source
+# at the same version so the ABI is compatible.
 RUN pip install --no-cache-dir --force-reinstall \
-    torch==2.11.0 torchaudio==2.11.0 torchvision==0.26.0 \
+    torch==2.11.0 \
+    torchvision==0.26.0 \
     --index-url https://download.pytorch.org/whl/cpu
-
-# The CPU whl omits _torchaudio_sox.so but torchaudio's loader requires
-# the file to exist and be dlopen-able. Compile a no-op stub so the load
-# succeeds. Our pipeline never calls sox I/O so no sox symbols are needed.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc \
-    && mkdir -p /usr/local/lib/python3.11/site-packages/torchaudio/lib \
-    && printf 'void __sox_stub(void){}\n' | gcc -x c - -shared -fPIC \
-       -o /usr/local/lib/python3.11/site-packages/torchaudio/lib/_torchaudio_sox.so \
-    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir --force-reinstall torchaudio==2.11.0
 
 COPY . .
 
