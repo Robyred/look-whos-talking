@@ -11,17 +11,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# torch and torchvision: CPU-only build to avoid the ~2 GB CUDA overhead.
-# torchaudio: force-reinstall from PyPI at the exact same version so it
-# ships with bundled libsox (_torchaudio_sox.so). The CPU whl omits that
-# file but the PyPI wheel includes it. Both are built from the same source
-# at the same version so the ABI is compatible.
-RUN pip install --no-cache-dir --force-reinstall \
-    torch==2.11.0 \
-    torchvision==0.26.0 \
-    --index-url https://download.pytorch.org/whl/cpu
-RUN pip install --no-cache-dir --force-reinstall torchaudio==2.11.0
-
 COPY . .
 
 RUN mkdir -p data/jobs data/uploads data/results
