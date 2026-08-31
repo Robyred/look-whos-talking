@@ -56,3 +56,26 @@ class ConversationSummary(BaseModel):
 
 class ConversationListResponse(BaseModel):
     conversations: list[ConversationSummary]
+
+
+# --- Insights models ---
+
+class SpeakerNameProposal(BaseModel):
+    speaker_id: str
+    proposed_name: str | None = None
+
+
+class ActionItem(BaseModel):
+    task: str
+    assignee: str | None = None
+    deadline: str | None = None
+
+
+class InsightsRequest(BaseModel):
+    speaker_names: dict[str, str] = {}
+
+
+class InsightsResponse(BaseModel):
+    speaker_names: list[SpeakerNameProposal]
+    action_items: list[ActionItem]
+    minutes: str

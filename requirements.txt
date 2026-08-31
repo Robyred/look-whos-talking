@@ -19,6 +19,9 @@ python-multipart>=0.0.9
 numpy>=1.26
 pandas>=2.2
 
+# LLM insights
+groq>=0.11.0
+
 # Environment
 python-dotenv>=1.0
 
