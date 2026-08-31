@@ -1,6 +1,9 @@
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
+
+logger = logging.getLogger(__name__)
 
 from audio_processor.loader import load_audio, SAMPLE_RATE
 from audio_processor.preprocessor import preprocess
@@ -26,15 +29,21 @@ router = APIRouter()
 
 
 def _run_pipeline(job_id: str, audio_path: Path, filename: str) -> None:
+    logger.info("[%s] pipeline start: %s", job_id[:8], filename)
     update_job(job_id, JobStatus.PROCESSING)
     try:
+        logger.info("[%s] loading audio", job_id[:8])
         audio = load_audio(audio_path)
         audio = preprocess(audio)
+        logger.info("[%s] diarizing (%.1f s audio)", job_id[:8], len(audio) / SAMPLE_RATE)
         timeline = diarise(audio)
         total_duration = len(audio) / SAMPLE_RATE
         metrics = calculate_metrics(timeline, total_duration)
+        logger.info("[%s] diarization done: %d speaker(s)", job_id[:8], metrics.speaker_count)
 
+        logger.info("[%s] transcribing", job_id[:8])
         utterances = transcribe(audio, timeline)
+        logger.info("[%s] transcription done: %d segments", job_id[:8], len(utterances))
 
         result = DiarizationResponse(
             filename=filename,
@@ -64,7 +73,9 @@ def _run_pipeline(job_id: str, audio_path: Path, filename: str) -> None:
         )
         save_result(result)
         update_job(job_id, JobStatus.COMPLETE, result=result)
+        logger.info("[%s] complete", job_id[:8])
     except Exception as exc:
+        logger.exception("[%s] pipeline failed: %s", job_id[:8], exc)
         update_job(job_id, JobStatus.FAILED, error=str(exc))
     finally:
         audio_path.unlink(missing_ok=True)

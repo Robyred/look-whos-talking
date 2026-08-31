@@ -1,9 +1,12 @@
+import logging
 import os
 
 import numpy as np
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 _pipeline = None
 
@@ -17,11 +20,18 @@ def _get_pipeline():
         token = os.getenv("HF_TOKEN")
         if not token:
             raise EnvironmentError("HF_TOKEN not set — check your .env file")
+        logger.info("Loading pyannote speaker-diarization-3.1 (downloading if not cached)…")
         _pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
             token=token,
         )
+        logger.info("pyannote pipeline ready")
     return _pipeline
+
+
+def warmup() -> None:
+    """Load the pipeline at startup so the first job isn't slow."""
+    _get_pipeline()
 
 
 def diarise(audio: np.ndarray, sample_rate: int = 16_000) -> list[tuple[str, float, float]]:
