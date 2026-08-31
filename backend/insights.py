@@ -1,7 +1,7 @@
 import json
 import os
 
-from groq import AsyncGroq
+from openai import AsyncOpenAI
 
 from backend.models import (
     ActionItem,
@@ -10,7 +10,8 @@ from backend.models import (
     SpeakerNameProposal,
 )
 
-_MODEL = "llama-3.3-70b-versatile"
+_BASE_URL = "https://api.deepseek.com"
+_MODEL = "deepseek-chat"
 
 _SYSTEM = (
     "You are a meeting analysis assistant. "
@@ -55,11 +56,11 @@ async def generate_insights(
     result: DiarizationResponse,
     speaker_names: dict[str, str],
 ) -> InsightsResponse:
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
-        raise ValueError("GROQ_API_KEY environment variable is not configured")
+        raise ValueError("DEEPSEEK_API_KEY environment variable is not configured")
 
-    client = AsyncGroq(api_key=api_key)
+    client = AsyncOpenAI(api_key=api_key, base_url=_BASE_URL)
     completion = await client.chat.completions.create(
         model=_MODEL,
         messages=[
