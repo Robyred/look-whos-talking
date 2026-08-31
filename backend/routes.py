@@ -93,6 +93,13 @@ async def get_job_status(job_id: str) -> JobStatusResponse:
     return job
 
 
+@router.get("/debug/env-keys")
+async def debug_env_keys() -> dict:
+    import os
+    keys = [k for k in os.environ if "KEY" in k or "API" in k or "TOKEN" in k or "SECRET" in k]
+    return {"matched_keys": sorted(keys)}
+
+
 @router.get("/conversations", response_model=ConversationListResponse)
 async def get_conversations() -> ConversationListResponse:
     return ConversationListResponse(conversations=list_conversations())
