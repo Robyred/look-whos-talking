@@ -106,19 +106,19 @@ class _SummaryCard extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 12),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 _StatChip(
                   icon: Icons.people,
                   label:
                       '${result.speakerCount} speaker${result.speakerCount == 1 ? '' : 's'}',
                 ),
-                const SizedBox(width: 8),
                 _StatChip(
                   icon: Icons.timer,
                   label: _formatSec(result.totalDurationSec),
                 ),
-                const SizedBox(width: 8),
                 _StatChip(
                   icon: Icons.volume_up,
                   label:
