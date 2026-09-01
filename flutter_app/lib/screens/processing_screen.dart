@@ -79,6 +79,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
                 jobId: status.jobId,
                 result: status.result!,
                 proposals: detection.proposals,
+                audioFile: widget.audioFile,
               ),
             ),
           );

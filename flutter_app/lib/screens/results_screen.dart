@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/insights.dart';
@@ -16,18 +20,21 @@ class ResultsScreen extends StatelessWidget {
   final String jobId;
   final DiarizationResult result;
   final Map<String, String> nameMap;
+  final File? audioFile;
 
   const ResultsScreen({
     super.key,
     required this.jobId,
     required this.result,
     this.nameMap = const {},
+    this.audioFile,
   });
 
   @override
   Widget build(BuildContext context) {
     final hasTranscript = result.transcript.isNotEmpty;
-    final tabCount = hasTranscript ? 4 : 1;
+    final hasAudio = audioFile != null;
+    final tabCount = hasTranscript ? (hasAudio ? 5 : 4) : 1;
 
     return DefaultTabController(
       length: tabCount,
@@ -35,11 +42,12 @@ class ResultsScreen extends StatelessWidget {
         appBar: AppBar(
           title: const Text('Results'),
           bottom: hasTranscript
-              ? const TabBar(tabs: [
-                  Tab(text: 'Overview'),
-                  Tab(text: 'Transcript'),
-                  Tab(text: 'Insights'),
-                  Tab(text: 'Chat'),
+              ? TabBar(tabs: [
+                  const Tab(text: 'Overview'),
+                  const Tab(text: 'Transcript'),
+                  const Tab(text: 'Insights'),
+                  const Tab(text: 'Chat'),
+                  if (hasAudio) const Tab(text: 'Playback'),
                 ])
               : null,
         ),
@@ -52,6 +60,12 @@ class ResultsScreen extends StatelessWidget {
                     filename: result.filename),
                 _InsightsTab(jobId: jobId, result: result, nameMap: nameMap),
                 _ChatTab(jobId: jobId, nameMap: nameMap),
+                if (hasAudio)
+                  _PlaybackTab(
+                    audioFile: audioFile!,
+                    segments: result.transcript,
+                    nameMap: nameMap,
+                  ),
               ])
             : _OverviewTab(result: result, nameMap: nameMap),
       ),
@@ -366,15 +380,19 @@ class _InsightsTabState extends State<_InsightsTab> {
     try {
       final result =
           await _api.fetchInsights(widget.jobId, widget.nameMap);
-      if (mounted) setState(() {
-        _insights = result;
-        _state = _InsightsState.loaded;
-      });
+      if (mounted) {
+        setState(() {
+          _insights = result;
+          _state = _InsightsState.loaded;
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() {
-        _error = e.toString();
-        _state = _InsightsState.failed;
-      });
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _state = _InsightsState.failed;
+        });
+      }
     }
   }
 
@@ -915,6 +933,285 @@ class _ShareBar extends StatelessWidget {
             onPressed: onShare,
             icon: const Icon(Icons.share, size: 18),
             label: const Text('Share transcript'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Playback tab ─────────────────────────────────────────────────────────────
+
+class _PlaybackTab extends StatefulWidget {
+  final File audioFile;
+  final List<TranscriptSegment> segments;
+  final Map<String, String> nameMap;
+
+  const _PlaybackTab({
+    required this.audioFile,
+    required this.segments,
+    required this.nameMap,
+  });
+
+  @override
+  State<_PlaybackTab> createState() => _PlaybackTabState();
+}
+
+class _PlaybackTabState extends State<_PlaybackTab> {
+  late final AudioPlayer _player;
+  bool _loaded = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    _player = AudioPlayer();
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.speech());
+      await _player.setFilePath(widget.audioFile.path);
+      if (mounted) setState(() => _loaded = true);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  int _activeIndex(double positionSec) {
+    for (var i = 0; i < widget.segments.length; i++) {
+      final seg = widget.segments[i];
+      if (positionSec >= seg.start && positionSec < seg.end) return i;
+    }
+    return -1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 16),
+              Text(
+                'Playback unavailable\n$_error',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (!_loaded) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: StreamBuilder<Duration>(
+            stream: _player.positionStream,
+            builder: (context, snapshot) {
+              final positionSec =
+                  (snapshot.data ?? Duration.zero).inMilliseconds / 1000.0;
+              final activeIdx = _activeIndex(positionSec);
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: widget.segments.length,
+                itemBuilder: (context, i) {
+                  final seg = widget.segments[i];
+                  final isActive = i == activeIdx;
+                  final color = colorForSpeaker(seg.speakerId);
+                  final label = speakerLabel(seg.speakerId, widget.nameMap);
+                  final showHeader = i == 0 ||
+                      widget.segments[i - 1].speakerId != seg.speakerId;
+
+                  return GestureDetector(
+                    onTap: () => _player.seek(
+                      Duration(milliseconds: (seg.start * 1000).toInt()),
+                    ),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 2),
+                      decoration: BoxDecoration(
+                        color: isActive ? color.withAlpha(30) : null,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (showHeader) ...[
+                            if (i > 0) const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: isActive
+                                        ? color.withAlpha(60)
+                                        : color.withAlpha(26),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    label,
+                                    style: TextStyle(
+                                      color: color,
+                                      fontSize: 11,
+                                      fontWeight: isActive
+                                          ? FontWeight.bold
+                                          : FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _formatSec(seg.start),
+                                  style: TextStyle(
+                                      fontSize: 11, color: Colors.grey[400]),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+                          Padding(
+                            padding: const EdgeInsets.only(left: 4),
+                            child: Text(
+                              seg.text.trim(),
+                              style: TextStyle(
+                                fontSize: 15,
+                                height: 1.5,
+                                fontWeight: isActive
+                                    ? FontWeight.w500
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        _TransportBar(player: _player),
+      ],
+    );
+  }
+}
+
+class _TransportBar extends StatelessWidget {
+  final AudioPlayer player;
+
+  const _TransportBar({required this.player});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+            top: BorderSide(color: Colors.grey.withAlpha(50), width: 1)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        8,
+        16,
+        MediaQuery.of(context).padding.bottom + 8,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          StreamBuilder<Duration?>(
+            stream: player.durationStream,
+            builder: (context, durSnap) {
+              final totalMs =
+                  (durSnap.data ?? Duration.zero).inMilliseconds.toDouble();
+              return StreamBuilder<Duration>(
+                stream: player.positionStream,
+                builder: (context, posSnap) {
+                  final posMs = (posSnap.data ?? Duration.zero)
+                      .inMilliseconds
+                      .toDouble()
+                      .clamp(0.0, totalMs);
+                  return Row(
+                    children: [
+                      SizedBox(
+                        width: 42,
+                        child: Text(
+                          _formatSec(posMs / 1000),
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ),
+                      Expanded(
+                        child: Slider(
+                          value: totalMs > 0 ? posMs : 0,
+                          max: totalMs > 0 ? totalMs : 1,
+                          onChanged: totalMs > 0
+                              ? (v) => player.seek(
+                                  Duration(milliseconds: v.toInt()))
+                              : null,
+                        ),
+                      ),
+                      SizedBox(
+                        width: 42,
+                        child: Text(
+                          _formatSec(totalMs / 1000),
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+          StreamBuilder<PlayerState>(
+            stream: player.playerStateStream,
+            builder: (context, snapshot) {
+              final state = snapshot.data;
+              final playing = state?.playing ?? false;
+              final completed =
+                  state?.processingState == ProcessingState.completed;
+
+              if (completed) {
+                return IconButton.filled(
+                  onPressed: () async {
+                    await player.seek(Duration.zero);
+                    await player.play();
+                  },
+                  icon: const Icon(Icons.replay),
+                  iconSize: 32,
+                );
+              }
+
+              return IconButton.filled(
+                onPressed: playing ? player.pause : player.play,
+                icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                iconSize: 32,
+              );
+            },
           ),
         ],
       ),

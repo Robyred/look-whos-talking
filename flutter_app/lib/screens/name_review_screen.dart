@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../models/job_result.dart';
@@ -8,12 +10,14 @@ class NameReviewScreen extends StatefulWidget {
   final String jobId;
   final DiarizationResult result;
   final Map<String, String> proposals;
+  final File? audioFile;
 
   const NameReviewScreen({
     super.key,
     required this.jobId,
     required this.result,
     required this.proposals,
+    this.audioFile,
   });
 
   @override
@@ -62,6 +66,7 @@ class _NameReviewScreenState extends State<NameReviewScreen> {
           jobId: widget.jobId,
           result: widget.result,
           nameMap: nameMap,
+          audioFile: widget.audioFile,
         ),
       ),
     );
@@ -74,6 +79,7 @@ class _NameReviewScreenState extends State<NameReviewScreen> {
         builder: (_) => ResultsScreen(
           jobId: widget.jobId,
           result: widget.result,
+          audioFile: widget.audioFile,
         ),
       ),
     );
