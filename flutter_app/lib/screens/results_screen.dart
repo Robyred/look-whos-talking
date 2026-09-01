@@ -27,7 +27,7 @@ class ResultsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasTranscript = result.transcript.isNotEmpty;
-    final tabCount = hasTranscript ? 3 : 1;
+    final tabCount = hasTranscript ? 4 : 1;
 
     return DefaultTabController(
       length: tabCount,
@@ -39,6 +39,7 @@ class ResultsScreen extends StatelessWidget {
                   Tab(text: 'Overview'),
                   Tab(text: 'Transcript'),
                   Tab(text: 'Insights'),
+                  Tab(text: 'Chat'),
                 ])
               : null,
         ),
@@ -50,6 +51,7 @@ class ResultsScreen extends StatelessWidget {
                     nameMap: nameMap,
                     filename: result.filename),
                 _InsightsTab(jobId: jobId, result: result, nameMap: nameMap),
+                _ChatTab(jobId: jobId, nameMap: nameMap),
               ])
             : _OverviewTab(result: result, nameMap: nameMap),
       ),
@@ -693,6 +695,199 @@ class _Pill extends StatelessWidget {
         const SizedBox(width: 3),
         Text(label,
             style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+      ],
+    );
+  }
+}
+
+// ─── Chat tab ─────────────────────────────────────────────────────────────────
+
+class _Bubble {
+  final String role; // "user" or "assistant"
+  final String text;
+  const _Bubble(this.role, this.text);
+}
+
+class _ChatTab extends StatefulWidget {
+  final String jobId;
+  final Map<String, String> nameMap;
+
+  const _ChatTab({required this.jobId, required this.nameMap});
+
+  @override
+  State<_ChatTab> createState() => _ChatTabState();
+}
+
+class _ChatTabState extends State<_ChatTab> {
+  final _api = ApiService();
+  final _controller = TextEditingController();
+  final _scrollController = ScrollController();
+  final List<_Bubble> _bubbles = [];
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _sending) return;
+
+    setState(() {
+      _bubbles.add(_Bubble('user', text));
+      _sending = true;
+    });
+    _controller.clear();
+    _scrollToBottom();
+
+    final history = _bubbles
+        .map((b) => {'role': b.role, 'content': b.text})
+        .toList();
+
+    try {
+      final answer = await _api.askQuestion(widget.jobId, history, widget.nameMap);
+      if (mounted) {
+        setState(() => _bubbles.add(_Bubble('assistant', answer)));
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _bubbles.add(_Bubble('assistant', 'Error: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+      _scrollToBottom();
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: _bubbles.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.chat_bubble_outline,
+                            size: 56, color: Colors.indigo[200]),
+                        const SizedBox(height: 16),
+                        Text('Ask about the conversation',
+                            style: Theme.of(context).textTheme.titleMedium),
+                        const SizedBox(height: 8),
+                        Text(
+                          'e.g. "What did Speaker 1 say about the budget?"\nor "Were any deadlines mentioned?"',
+                          textAlign: TextAlign.center,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: Colors.grey[500]),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _bubbles.length + (_sending ? 1 : 0),
+                  itemBuilder: (context, i) {
+                    if (_sending && i == _bubbles.length) {
+                      return const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      );
+                    }
+                    final bubble = _bubbles[i];
+                    final isUser = bubble.role == 'user';
+                    return Align(
+                      alignment:
+                          isUser ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 10),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width * 0.78,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isUser
+                              ? Colors.indigo
+                              : Theme.of(context).colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.only(
+                            topLeft: const Radius.circular(16),
+                            topRight: const Radius.circular(16),
+                            bottomLeft: Radius.circular(isUser ? 16 : 4),
+                            bottomRight: Radius.circular(isUser ? 4 : 16),
+                          ),
+                        ),
+                        child: Text(
+                          bubble.text,
+                          style: TextStyle(
+                            fontSize: 15,
+                            height: 1.4,
+                            color: isUser ? Colors.white : null,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        const Divider(height: 1),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+              12, 8, 12, MediaQuery.of(context).viewInsets.bottom + 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: (_) => _send(),
+                  decoration: const InputDecoration(
+                    hintText: 'Ask a question…',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.all(Radius.circular(24)),
+                    ),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    isDense: true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                onPressed: _sending ? null : _send,
+                icon: const Icon(Icons.send),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

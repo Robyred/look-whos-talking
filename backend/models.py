@@ -79,3 +79,19 @@ class InsightsResponse(BaseModel):
     speaker_names: list[SpeakerNameProposal]
     action_items: list[ActionItem]
     minutes: str
+
+
+# --- Chat / Q&A models ---
+
+class ChatMessage(BaseModel):
+    role: str   # "user" or "assistant"
+    content: str
+
+
+class AskRequest(BaseModel):
+    messages: list[ChatMessage]
+    speaker_names: dict[str, str] = {}
+
+
+class AskResponse(BaseModel):
+    answer: str

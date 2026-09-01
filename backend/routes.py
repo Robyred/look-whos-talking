@@ -7,9 +7,11 @@ logger = logging.getLogger(__name__)
 
 from audio_processor.loader import load_audio, SAMPLE_RATE
 from audio_processor.preprocessor import preprocess
-from backend.insights import generate_insights
+from backend.insights import ask_question, generate_insights
 from backend.jobs import create_job, get_job, update_job, upload_path
 from backend.models import (
+    AskRequest,
+    AskResponse,
     ConversationListResponse,
     DiarizationResponse,
     InsightsRequest,
@@ -122,3 +124,18 @@ async def get_insights(job_id: str, body: InsightsRequest) -> InsightsResponse:
         raise HTTPException(status_code=503, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Insights generation failed: {exc}")
+
+
+@router.post("/jobs/{job_id}/ask", response_model=AskResponse)
+async def ask_about_job(job_id: str, body: AskRequest) -> AskResponse:
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    if job.status != JobStatus.COMPLETE or job.result is None:
+        raise HTTPException(status_code=400, detail="Job is not complete")
+    try:
+        return await ask_question(job.result, body.messages, body.speaker_names)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Chat failed: {exc}")

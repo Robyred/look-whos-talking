@@ -5,6 +5,8 @@ from openai import AsyncOpenAI
 
 from backend.models import (
     ActionItem,
+    AskResponse,
+    ChatMessage,
     DiarizationResponse,
     InsightsResponse,
     SpeakerNameProposal,
@@ -91,3 +93,33 @@ async def generate_insights(
         ],
         minutes=data.get("minutes", ""),
     )
+
+
+_CHAT_SYSTEM_TEMPLATE = (
+    "You are a helpful assistant answering questions about a conversation transcript. "
+    "Answer concisely and only from what is in the transcript. "
+    "If the answer cannot be found in the transcript, say so clearly.\n\n"
+    "Transcript:\n{transcript}"
+)
+
+
+async def ask_question(
+    result: DiarizationResponse,
+    messages: list[ChatMessage],
+    speaker_names: dict[str, str],
+) -> AskResponse:
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise ValueError("DEEPSEEK_API_KEY environment variable is not configured")
+
+    transcript = _format_transcript(result, speaker_names)
+    system = _CHAT_SYSTEM_TEMPLATE.format(transcript=transcript)
+
+    client = AsyncOpenAI(api_key=api_key, base_url=_BASE_URL)
+    completion = await client.chat.completions.create(
+        model=_MODEL,
+        messages=[{"role": "system", "content": system}]
+        + [{"role": m.role, "content": m.content} for m in messages],
+        temperature=0.3,
+    )
+    return AskResponse(answer=completion.choices[0].message.content)
