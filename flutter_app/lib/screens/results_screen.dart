@@ -861,7 +861,10 @@ class _ChatTabState extends State<_ChatTab> {
         const Divider(height: 1),
         Padding(
           padding: EdgeInsets.fromLTRB(
-              12, 8, 12, MediaQuery.of(context).viewInsets.bottom + 8),
+              12, 8, 12,
+              MediaQuery.of(context).viewInsets.bottom +
+                  MediaQuery.of(context).padding.bottom +
+                  8),
           child: Row(
             children: [
               Expanded(
