@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Form, HTTPException, UploadFile
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +30,24 @@ from transcription.transcriber import transcribe
 router = APIRouter()
 
 
-def _run_pipeline(job_id: str, audio_path: Path, filename: str) -> None:
+def _run_pipeline(
+    job_id: str,
+    audio_path: Path,
+    filename: str,
+    min_speakers: int | None = None,
+    max_speakers: int | None = None,
+) -> None:
     logger.info("[%s] pipeline start: %s", job_id[:8], filename)
     update_job(job_id, JobStatus.PROCESSING)
     try:
         logger.info("[%s] loading audio", job_id[:8])
         audio = load_audio(audio_path)
         audio = preprocess(audio)
-        logger.info("[%s] diarizing (%.1f s audio)", job_id[:8], len(audio) / SAMPLE_RATE)
-        timeline = diarise(audio)
+        logger.info(
+            "[%s] diarizing (%.1f s audio, min_speakers=%s, max_speakers=%s)",
+            job_id[:8], len(audio) / SAMPLE_RATE, min_speakers, max_speakers,
+        )
+        timeline = diarise(audio, min_speakers=min_speakers, max_speakers=max_speakers)
         total_duration = len(audio) / SAMPLE_RATE
         metrics = calculate_metrics(timeline, total_duration)
         logger.info("[%s] diarization done: %d speaker(s)", job_id[:8], metrics.speaker_count)
@@ -85,7 +94,10 @@ def _run_pipeline(job_id: str, audio_path: Path, filename: str) -> None:
 
 @router.post("/diarize", response_model=JobResponse, status_code=202)
 async def diarize_audio(
-    file: UploadFile, background_tasks: BackgroundTasks
+    file: UploadFile,
+    background_tasks: BackgroundTasks,
+    min_speakers: int | None = Form(None),
+    max_speakers: int | None = Form(None),
 ) -> JobResponse:
     filename = file.filename or "upload.wav"
     job = create_job(filename)
@@ -94,7 +106,9 @@ async def diarize_audio(
     path = upload_path(job.job_id, suffix)
     path.write_bytes(await file.read())
 
-    background_tasks.add_task(_run_pipeline, job.job_id, path, filename)
+    background_tasks.add_task(
+        _run_pipeline, job.job_id, path, filename, min_speakers, max_speakers
+    )
     return JobResponse(job_id=job.job_id, status=job.status)
 
 

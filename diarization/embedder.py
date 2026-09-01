@@ -34,13 +34,23 @@ def warmup() -> None:
     _get_pipeline()
 
 
-def diarise(audio: np.ndarray, sample_rate: int = 16_000) -> list[tuple[str, float, float]]:
+def diarise(
+    audio: np.ndarray,
+    sample_rate: int = 16_000,
+    min_speakers: int | None = None,
+    max_speakers: int | None = None,
+) -> list[tuple[str, float, float]]:
     import torch
 
     pipeline = _get_pipeline()
 
     waveform = torch.from_numpy(audio).unsqueeze(0)
-    output = pipeline({"waveform": waveform, "sample_rate": sample_rate})
+    kwargs: dict = {}
+    if min_speakers is not None:
+        kwargs["min_speakers"] = min_speakers
+    if max_speakers is not None:
+        kwargs["max_speakers"] = max_speakers
+    output = pipeline({"waveform": waveform, "sample_rate": sample_rate}, **kwargs)
     annotation = output.speaker_diarization
 
     return [

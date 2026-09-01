@@ -16,10 +16,16 @@ class ApiException implements Exception {
 
 class ApiService {
   // Upload audio file, returns job_id.
-  Future<String> submitJob(File audioFile) async {
+  // [speakerCount] constrains the clustering to exactly that many speakers.
+  // Pass null when the count is unknown.
+  Future<String> submitJob(File audioFile, {int? speakerCount}) async {
     final uri = Uri.parse('$kApiBaseUrl/api/diarize');
     final request = http.MultipartRequest('POST', uri);
     request.files.add(await http.MultipartFile.fromPath('file', audioFile.path));
+    if (speakerCount != null) {
+      request.fields['min_speakers'] = speakerCount.toString();
+      request.fields['max_speakers'] = speakerCount.toString();
+    }
 
     final streamed = await request.send().timeout(const Duration(seconds: 30));
     final body = await streamed.stream.bytesToString();
