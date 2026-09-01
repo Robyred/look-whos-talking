@@ -16,7 +16,7 @@ String _formatSec(double sec) {
   return '$m:$s';
 }
 
-class ResultsScreen extends StatelessWidget {
+class ResultsScreen extends StatefulWidget {
   final String jobId;
   final DiarizationResult result;
   final Map<String, String> nameMap;
@@ -31,43 +31,79 @@ class ResultsScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final hasTranscript = result.transcript.isNotEmpty;
-    final hasAudio = audioFile != null;
-    final tabCount = hasTranscript ? (hasAudio ? 5 : 4) : 1;
+  State<ResultsScreen> createState() => _ResultsScreenState();
+}
 
-    return DefaultTabController(
-      length: tabCount,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Results'),
-          bottom: hasTranscript
-              ? TabBar(tabs: [
-                  const Tab(text: 'Overview'),
-                  const Tab(text: 'Transcript'),
-                  const Tab(text: 'Insights'),
-                  const Tab(text: 'Chat'),
-                  if (hasAudio) const Tab(text: 'Playback'),
-                ])
-              : null,
+class _ResultsScreenState extends State<ResultsScreen> {
+  int _tab = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasTranscript = widget.result.transcript.isNotEmpty;
+    final hasAudio = widget.audioFile != null;
+
+    if (!hasTranscript) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Results')),
+        body: _OverviewTab(result: widget.result, nameMap: widget.nameMap),
+      );
+    }
+
+    final tabs = <(IconData, String)>[
+      (Icons.bar_chart, 'Overview'),
+      (Icons.article, 'Transcript'),
+      (Icons.auto_awesome, 'Insights'),
+      (Icons.question_answer, 'Q&A'),
+      if (hasAudio) (Icons.headphones, 'Playback'),
+    ];
+
+    final content = <Widget>[
+      _OverviewTab(result: widget.result, nameMap: widget.nameMap),
+      _TranscriptTab(
+          segments: widget.result.transcript,
+          nameMap: widget.nameMap,
+          filename: widget.result.filename),
+      _InsightsTab(
+          jobId: widget.jobId,
+          result: widget.result,
+          nameMap: widget.nameMap),
+      _ChatTab(jobId: widget.jobId, nameMap: widget.nameMap),
+      if (hasAudio)
+        _PlaybackTab(
+          audioFile: widget.audioFile!,
+          segments: widget.result.transcript,
+          nameMap: widget.nameMap,
         ),
-        body: hasTranscript
-            ? TabBarView(children: [
-                _OverviewTab(result: result, nameMap: nameMap),
-                _TranscriptTab(
-                    segments: result.transcript,
-                    nameMap: nameMap,
-                    filename: result.filename),
-                _InsightsTab(jobId: jobId, result: result, nameMap: nameMap),
-                _ChatTab(jobId: jobId, nameMap: nameMap),
-                if (hasAudio)
-                  _PlaybackTab(
-                    audioFile: audioFile!,
-                    segments: result.transcript,
-                    nameMap: nameMap,
+    ];
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Results')),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (var i = 0; i < tabs.length; i++)
+                  _NavButton(
+                    icon: tabs[i].$1,
+                    label: tabs[i].$2,
+                    selected: _tab == i,
+                    onTap: () => setState(() => _tab = i),
                   ),
-              ])
-            : _OverviewTab(result: result, nameMap: nameMap),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: IndexedStack(
+              index: _tab,
+              children: content,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -935,6 +971,56 @@ class _ShareBar extends StatelessWidget {
             label: const Text('Share transcript'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Navigation buttons ───────────────────────────────────────────────────────
+
+class _NavButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _NavButton({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final bg = selected ? cs.primaryContainer : cs.surfaceContainerHighest;
+    final fg = selected ? cs.onPrimaryContainer : cs.onSurface;
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: fg),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight:
+                      selected ? FontWeight.w600 : FontWeight.w400,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
