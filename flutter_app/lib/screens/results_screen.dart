@@ -7,8 +7,10 @@ import 'package:share_plus/share_plus.dart';
 
 import '../models/insights.dart';
 import '../models/job_result.dart';
-import '../services/api_service.dart';
 import '../utils/speaker_utils.dart';
+import '../view_models/chat_view_model.dart';
+import '../view_models/insights_view_model.dart';
+import '../widgets/nav_button.dart';
 
 String _formatSec(double sec) {
   final m = (sec ~/ 60).toString().padLeft(2, '0');
@@ -87,7 +89,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
               runSpacing: 8,
               children: [
                 for (var i = 0; i < tabs.length; i++)
-                  _NavButton(
+                  NavButton(
                     icon: tabs[i].$1,
                     label: tabs[i].$2,
                     selected: _tab == i,
@@ -388,8 +390,6 @@ class _TranscriptTab extends StatelessWidget {
 
 // ─── Insights tab ─────────────────────────────────────────────────────────────
 
-enum _InsightsState { idle, loading, loaded, failed }
-
 class _InsightsTab extends StatefulWidget {
   final String jobId;
   final DiarizationResult result;
@@ -406,56 +406,51 @@ class _InsightsTab extends StatefulWidget {
 }
 
 class _InsightsTabState extends State<_InsightsTab> {
-  final _api = ApiService();
-  _InsightsState _state = _InsightsState.idle;
-  InsightsResult? _insights;
-  String? _error;
+  late final InsightsViewModel _vm;
 
-  Future<void> _generate() async {
-    setState(() => _state = _InsightsState.loading);
-    try {
-      final result =
-          await _api.fetchInsights(widget.jobId, widget.nameMap);
-      if (mounted) {
-        setState(() {
-          _insights = result;
-          _state = _InsightsState.loaded;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _state = _InsightsState.failed;
-        });
-      }
-    }
+  @override
+  void initState() {
+    super.initState();
+    _vm = InsightsViewModel(
+      jobId: widget.jobId,
+      result: widget.result,
+      nameMap: widget.nameMap,
+    );
+  }
+
+  @override
+  void dispose() {
+    _vm.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return switch (_state) {
-      _InsightsState.idle => _IdleView(onGenerate: _generate),
-      _InsightsState.loading => const Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Asking DeepSeek…'),
-            ],
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => switch (_vm.phase) {
+        InsightsPhase.idle => _IdleView(onGenerate: _vm.generate),
+        InsightsPhase.loading => const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Asking DeepSeek…'),
+              ],
+            ),
           ),
-        ),
-      _InsightsState.loaded => _InsightsView(
-          insights: _insights!,
-          nameMap: widget.nameMap,
-          filename: widget.result.filename,
-        ),
-      _InsightsState.failed => _FailedView(
-          error: _error ?? 'Unknown error',
-          onRetry: _generate,
-        ),
-    };
+        InsightsPhase.loaded => _InsightsView(
+            insights: _vm.insights!,
+            nameMap: widget.nameMap,
+            filename: widget.result.filename,
+          ),
+        InsightsPhase.failed => _FailedView(
+            error: _vm.error ?? 'Unknown error',
+            onRetry: _vm.generate,
+          ),
+      },
+    );
   }
 }
 
@@ -756,12 +751,6 @@ class _Pill extends StatelessWidget {
 
 // ─── Chat tab ─────────────────────────────────────────────────────────────────
 
-class _Bubble {
-  final String role; // "user" or "assistant"
-  final String text;
-  const _Bubble(this.role, this.text);
-}
-
 class _ChatTab extends StatefulWidget {
   final String jobId;
   final Map<String, String> nameMap;
@@ -773,14 +762,19 @@ class _ChatTab extends StatefulWidget {
 }
 
 class _ChatTabState extends State<_ChatTab> {
-  final _api = ApiService();
+  late final ChatViewModel _vm;
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
-  final List<_Bubble> _bubbles = [];
-  bool _sending = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _vm = ChatViewModel(jobId: widget.jobId, nameMap: widget.nameMap);
+  }
 
   @override
   void dispose() {
+    _vm.dispose();
     _controller.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -788,32 +782,11 @@ class _ChatTabState extends State<_ChatTab> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _sending) return;
-
-    setState(() {
-      _bubbles.add(_Bubble('user', text));
-      _sending = true;
-    });
+    if (text.isEmpty || _vm.sending) return;
     _controller.clear();
     _scrollToBottom();
-
-    final history = _bubbles
-        .map((b) => {'role': b.role, 'content': b.text})
-        .toList();
-
-    try {
-      final answer = await _api.askQuestion(widget.jobId, history, widget.nameMap);
-      if (mounted) {
-        setState(() => _bubbles.add(_Bubble('assistant', answer)));
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _bubbles.add(_Bubble('assistant', 'Error: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _sending = false);
-      _scrollToBottom();
-    }
+    await _vm.send(text);
+    _scrollToBottom();
   }
 
   void _scrollToBottom() {
@@ -830,122 +803,138 @@ class _ChatTabState extends State<_ChatTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: _bubbles.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.chat_bubble_outline,
-                            size: 56, color: Colors.indigo[200]),
-                        const SizedBox(height: 16),
-                        Text('Ask about the conversation',
-                            style: Theme.of(context).textTheme.titleMedium),
-                        const SizedBox(height: 8),
-                        Text(
-                          'e.g. "What did Speaker 1 say about the budget?"\nor "Were any deadlines mentioned?"',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(color: Colors.grey[500]),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _bubbles.length + (_sending ? 1 : 0),
-                  itemBuilder: (context, i) {
-                    if (_sending && i == _bubbles.length) {
-                      return const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      );
-                    }
-                    final bubble = _bubbles[i];
-                    final isUser = bubble.role == 'user';
-                    return Align(
-                      alignment:
-                          isUser ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.78,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isUser
-                              ? Colors.indigo
-                              : Theme.of(context).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(16),
-                            topRight: const Radius.circular(16),
-                            bottomLeft: Radius.circular(isUser ? 16 : 4),
-                            bottomRight: Radius.circular(isUser ? 4 : 16),
-                          ),
-                        ),
-                        child: Text(
-                          bubble.text,
-                          style: TextStyle(
-                            fontSize: 15,
-                            height: 1.4,
-                            color: isUser ? Colors.white : null,
-                          ),
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) {
+        final messages = _vm.messages;
+        final sending = _vm.sending;
+        return Column(
+          children: [
+            Expanded(
+              child: messages.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.chat_bubble_outline,
+                                size: 56, color: Colors.indigo[200]),
+                            const SizedBox(height: 16),
+                            Text('Ask about the conversation',
+                                style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 8),
+                            Text(
+                              'e.g. "What did Speaker 1 say about the budget?"\nor "Were any deadlines mentioned?"',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: Colors.grey[500]),
+                            ),
+                          ],
                         ),
                       ),
-                    );
-                  },
-                ),
-        ),
-        const Divider(height: 1),
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-              12, 8, 12,
-              MediaQuery.of(context).viewInsets.bottom +
-                  MediaQuery.of(context).padding.bottom +
-                  8),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  textInputAction: TextInputAction.send,
-                  onSubmitted: (_) => _send(),
-                  decoration: const InputDecoration(
-                    hintText: 'Ask a question…',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.all(Radius.circular(24)),
+                    )
+                  : LayoutBuilder(
+                      builder: (context, constraints) {
+                        return ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: messages.length + (sending ? 1 : 0),
+                          itemBuilder: (context, i) {
+                            if (sending && i == messages.length) {
+                              return const Align(
+                                alignment: Alignment.centerLeft,
+                                child: Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 8),
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  ),
+                                ),
+                              );
+                            }
+                            final msg = messages[i];
+                            final isUser = msg.role == 'user';
+                            return Align(
+                              alignment: isUser
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 10),
+                                constraints: BoxConstraints(
+                                  maxWidth: constraints.maxWidth * 0.78,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isUser
+                                      ? Colors.indigo
+                                      : Theme.of(context)
+                                          .colorScheme
+                                          .surfaceContainerHighest,
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: const Radius.circular(16),
+                                    topRight: const Radius.circular(16),
+                                    bottomLeft: Radius.circular(isUser ? 16 : 4),
+                                    bottomRight: Radius.circular(isUser ? 4 : 16),
+                                  ),
+                                ),
+                                child: Text(
+                                  msg.text,
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    height: 1.4,
+                                    color: isUser ? Colors.white : null,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
                     ),
-                    contentPadding:
-                        EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    isDense: true,
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                  12,
+                  8,
+                  12,
+                  MediaQuery.of(context).viewInsets.bottom +
+                      MediaQuery.of(context).padding.bottom +
+                      8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => _send(),
+                      decoration: const InputDecoration(
+                        hintText: 'Ask a question…',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(24)),
+                        ),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        isDense: true,
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    onPressed: sending ? null : _send,
+                    icon: const Icon(Icons.send),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                onPressed: _sending ? null : _send,
-                icon: const Icon(Icons.send),
-              ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -971,56 +960,6 @@ class _ShareBar extends StatelessWidget {
             label: const Text('Share transcript'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ─── Navigation buttons ───────────────────────────────────────────────────────
-
-class _NavButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _NavButton({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final bg = selected ? cs.primaryContainer : cs.surfaceContainerHighest;
-    final fg = selected ? cs.onPrimaryContainer : cs.onSurface;
-    return Material(
-      color: bg,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 16, color: fg),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight:
-                      selected ? FontWeight.w600 : FontWeight.w400,
-                  color: fg,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
