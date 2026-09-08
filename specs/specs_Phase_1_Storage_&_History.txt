@@ -1,0 +1,199 @@
+The user wants all specs in one document. Let me write all 5 specs in a single cohesive document. I'll include:
+
+ConversationStore — local CRUD
+CloudStorageProvider — abstract interface + Google Drive implementation
+SyncService — ties local store to cloud provider
+HistoryViewModel + History screen
+StorageCleanupService — auto-delete prompt
+I'll make it clear where the doc starts and ends. I should present this as a complete document they can hand to another model for implementation.
+
+BEGIN SPEC DOCUMENT
+
+Look Who's Talking — Phase 1 Storage & History Spec
+Purpose: Enable on-device persistence of conversation results, optional sync to user-owned cloud storage (Google Drive), a History screen for past conversations, and a cleanup prompt for old audio files.
+
+Stack: Flutter (Dart), sqflite, googleapis, google_sign_in, flutter_secure_storage
+
+Architecture principle: Local storage is always the source of truth. Cloud sync is a background layer. All screens work offline.
+
+1. Data Models
+ConversationRecord
+
+id            String    — job_id from backend
+filename      String    — original filename or "Recording YYYY-MM-DD HH:mm"
+createdAt     DateTime
+durationSec   double
+speakerCount  int
+resultJson    String    — full DiarizationResponse JSON as returned by backend
+audioPath     String?   — absolute local path to audio file; null if deleted
+isSynced      bool      — true if successfully uploaded to cloud storage
+RemoteFileInfo
+
+remotePath    String
+filename      String
+sizeBytes     int
+modifiedAt    DateTime
+2. ConversationStore
+Local persistence layer using SQLite (sqflite). One record per completed diarization job.
+
+
+ConversationStore.save(ConversationRecord) → Future<void>
+  Inserts or replaces. Called immediately after backend result is received.
+  Idempotent — re-saving the same id overwrites.
+
+ConversationStore.list() → Future<List<ConversationRecord>>
+  Returns all records ordered by createdAt descending.
+
+ConversationStore.get(id: String) → Future<ConversationRecord?>
+  Returns null if not found.
+
+ConversationStore.deleteAudio(id: String) → Future<void>
+  Deletes audio file from disk and sets audioPath to null in DB.
+  No-op if audioPath is already null or file no longer exists on disk.
+
+ConversationStore.delete(id: String) → Future<void>
+  Deletes audio file from disk (if present) and removes the DB record entirely.
+
+ConversationStore.markSynced(id: String) → Future<void>
+  Sets isSynced = true for the given record.
+Behaviour notes:
+
+deleteAudio must not throw if file no longer exists on disk
+Schema version stored in DB metadata for future migrations; no migration logic required for v1
+3. CloudStorageProvider
+Abstract interface for cloud storage. Google Drive is the first concrete implementation. Dropbox or others can be added later by implementing the same interface.
+
+
+authenticate() → Future<void>
+  Triggers OAuth2 flow. Stores token securely via flutter_secure_storage.
+  Throws AuthException if user cancels or auth fails.
+
+isAuthenticated() → Future<bool>
+  Returns true if a valid (non-expired) token exists.
+
+signOut() → Future<void>
+  Revokes token and clears local credentials.
+
+upload(localPath: String, remotePath: String) → Future<void>
+  Uploads file at localPath to remotePath within the app folder.
+  Overwrites if remote file already exists.
+  Throws StorageException on failure.
+
+download(remotePath: String, localPath: String) → Future<void>
+  Downloads remote file to localPath on device.
+  Throws StorageException if remote file not found.
+
+listFiles(folder: String) → Future<List<RemoteFileInfo>>
+  Returns metadata for all files in the given folder.
+
+deleteFile(remotePath: String) → Future<void>
+  Idempotent — no-op if file does not exist remotely.
+GoogleDriveProvider implements CloudStorageProvider
+Uses googleapis + google_sign_in packages
+All files stored under Look Who's Talking/ app folder in user's Drive — not visible in Drive root
+App folder created on first upload if absent
+Token refresh handled transparently; re-authentication prompted only if refresh token is revoked
+remotePath is always relative to the app folder root (e.g. "conversations/abc123/result.json")
+Files <30MB: simple retry on failure is sufficient (no resumable upload protocol needed)
+4. SyncService
+Coordinates between ConversationStore and CloudStorageProvider. Called after a conversation is saved locally and when the user explicitly triggers sync.
+
+
+SyncService.syncConversation(id: String) → Future<void>
+  Uploads result JSON and audio file (if present) for the given conversation.
+  Remote paths: "conversations/{id}/result.json" and "conversations/{id}/audio.aac"
+  Calls ConversationStore.markSynced(id) on success.
+  Throws if provider is not authenticated.
+
+SyncService.syncAll() → Future<SyncSummary>
+  Syncs all conversations where isSynced == false.
+  Returns count of succeeded and failed.
+
+SyncService.fetchRemoteIndex() → Future<List<RemoteConversationMeta>>
+  Lists all conversations present in the remote app folder.
+  Used to restore history on a new device.
+
+SyncService.downloadConversation(remoteId: String) → Future<void>
+  Downloads result.json (and audio.aac if present) for remoteId.
+  Saves to local storage via ConversationStore.save().
+  Audio saved to app documents directory.
+SyncSummary
+
+succeeded    int
+failed       int
+errors       List<String>   — human-readable descriptions of failures
+RemoteConversationMeta
+
+id           String
+filename     String
+createdAt    DateTime
+hasAudio     bool
+Behaviour notes:
+
+syncAll does not abort on individual failure — it continues and collects errors
+Sync is always initiated explicitly (on save, or by user action); no background sync daemon
+If audio file has been locally deleted, only result.json is uploaded; no error
+5. HistoryViewModel
+State management for the History screen.
+
+
+HistoryViewModel.load() → Future<void>
+  Loads all ConversationRecords from ConversationStore into state.
+  Sets loading / loaded / error state.
+
+HistoryViewModel.delete(id: String) → Future<void>
+  Calls ConversationStore.delete(id). Removes from local state list.
+
+HistoryViewModel.deleteAudio(id: String) → Future<void>
+  Calls ConversationStore.deleteAudio(id). Updates record in local state.
+
+HistoryViewModel.syncAll() → Future<SyncSummary>
+  Delegates to SyncService.syncAll(). Refreshes state on completion.
+
+HistoryViewModel.restoreFromCloud() → Future<void>
+  Calls SyncService.fetchRemoteIndex() then downloads any conversations
+  not already present locally. Refreshes state on completion.
+State values: loading, loaded, error
+
+History Screen behaviour
+Displayed as a new top-level tab or accessible from the Home screen
+Each row shows: filename, date, duration, speaker count, sync status icon, audio-present icon
+Tap row → navigates to Results screen, reconstructing result from stored resultJson
+Swipe-to-delete removes the full record (with confirmation dialog)
+Long-press or row action menu offers "Delete audio only" (keeps transcript)
+"Sync all" button visible when provider is authenticated and unsynced records exist
+"Restore from cloud" button visible when provider is authenticated
+6. StorageCleanupService
+Detects old audio files and prompts the user to delete them.
+
+
+StorageCleanupService.findOldAudioRecords(olderThanDays: int) → Future<List<ConversationRecord>>
+  Returns records where audioPath is not null and createdAt is older than olderThanDays.
+
+StorageCleanupService.totalAudioSizeBytes(records: List<ConversationRecord>) → Future<int>
+  Sums the file sizes of all audio files in the given list.
+
+StorageCleanupService.deleteAudioForRecords(records: List<ConversationRecord>) → Future<void>
+  Calls ConversationStore.deleteAudio(id) for each record in the list.
+
+StorageCleanupService.shouldPrompt() → Future<bool>
+  Returns true if any audio files are older than the configured threshold
+  AND the user has not been prompted within the last 30 days.
+
+StorageCleanupService.recordPromptShown() → Future<void>
+  Persists the current date as the last-prompted timestamp (shared_preferences).
+Behaviour notes:
+
+Default threshold: 90 days
+Threshold is a configurable constant, not a user-facing setting in v1
+Prompt is shown at app launch if shouldPrompt() returns true
+Prompt displays: number of files, total size to be freed, age of oldest file
+User choices: "Delete audio" (calls deleteAudioForRecords), "Keep for now" (calls recordPromptShown to suppress for 30 days), "Remind me later" (no action, will re-prompt next launch)
+Transcripts and insights are never deleted by this service
+Integration points
+ConversationStore.save() called in ProcessingScreen immediately after backend result received
+SyncService.syncConversation() called after save if provider is authenticated
+StorageCleanupService.shouldPrompt() checked in HomeScreen.initState()
+HistoryViewModel instantiated in History screen; providers injected via constructor
+END SPEC DOCUMENT
+

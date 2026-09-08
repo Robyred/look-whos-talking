@@ -1,0 +1,65 @@
+﻿Review: Phase 1 Storage & History
+Tests & Analysis
+154/154 tests pass locally, confirmed. flutter analyze hit the system file descriptor limit (Too many open files) — raising it with ulimit -n 65536 clears the error and the result is No issues found.
+
+Spec conformance — section by section
+Data models — Fully conformant. ConversationRecord has all 8 fields, UTC-normalised timestamps, toMap/fromMap correct. RemoteFileInfo, RemoteConversationMeta, SyncSummary all exactly as spec'd.
+
+ConversationStore — All 6 methods present and correct. save uses ConflictAlgorithm.replace (idempotent). deleteAudio no-ops silently on null path, missing file, or unknown id. delete cleans up audio from disk. Schema version in metadata table as spec'd. Injectable DatabaseFactory is the right pattern for tests.
+
+CloudStorageProvider — Abstract interface correct. AuthException and StorageException both defined.
+
+GoogleDriveProvider / GoogleDriveGatewayImpl — Correct. The DriveGateway seam makes the provider fully testable without a live account. Overwrite-not-duplicate pattern works (find first, then choose uploadNew vs overwrite). Idempotent deleteFile. _appFolder() re-validates its cached id — slightly chatty on every op but safe for account-switch correctness.
+
+SyncService — All 4 methods. Uploads result.json + manifest.json + optional audio.aac. markSynced only called after all uploads succeed. syncAll continues past individual failures. Legacy-manifest fallback in _metaFor is correct and well-tested.
+
+StorageCleanupService — All 5 methods. 90-day threshold, 30-day suppression, injectable clock, shared_preferences persistence. Boundary test (exactly at cutoff = not old) is correct.
+
+HistoryViewModel — Correct. HistoryLoadState enum, all 5 methods, hasUnsynced computed property, refreshCloudAuth() for button visibility, parseResult() to reconstruct from stored JSON. restoreFromCloud correctly skips already-local ids.
+
+History Screen — All spec requirements met: rows show all required metadata, icons for sync status and audio presence, swipe-to-delete with confirmation dialog, long-press menu with "Delete audio only", Sync all / Restore from cloud buttons conditional on auth state, error state with Retry.
+
+Documented deviations — All confirmed as intentional:
+
+Drive folder is visible in My Drive (Option A) — correct, hidden appDataFolder can't contain sub-folders
+manifest.json sidecar — good addition, necessary for restore metadata
+Tokens not mirrored in flutter_secure_storage — correct, google_sign_in 7.x owns its own platform-native token store; mirroring would create stale-copy bugs
+Issues requiring action before push
+1. ConversationStore.close() is a no-op — database handle leaked
+
+_db is declared but never assigned in _open(), so close() always calls null?.close(). The database handle is never closed. Fix is one line in _open():
+
+
+// current
+return _factory.openDatabase(path, options: ...);
+
+// fix
+return _db = await _factory.openDatabase(path, options: ...);
+2. flutter_secure_storage is in pubspec.yaml but unused
+
+The spec originally required it for token storage, but the deliberate decision was to let google_sign_in 7.x manage its own tokens. Nothing in the codebase imports it. Remove it from pubspec.yaml (and re-run flutter pub get to update pubspec.lock) — a dead dependency will confuse future readers and inflates the APK.
+
+Commit plan
+git status shows three classes of untracked files. I recommend two commits:
+
+Commit 1 — baseline: add pre-existing project files
+Stage the files that existed before Phase 1 and were never committed:
+
+Platform folders: android/, ios/, linux/, macos/, web/, windows/
+lib/main.dart, lib/config.dart, lib/utils/
+lib/screens/record_screen.dart
+analysis_options.yaml, README.md, .metadata, .gitignore, test/widget_test.dart
+The modifications to lib/screens/results_screen.dart, lib/screens/upload_screen.dart, test/unit/speaker_utils_test.dart, and backend/routes.py (these are pre-Phase-1 changes that were already in the working tree)
+Do not stage: specs/, "Jack's DeepSeek preferences.md", settings.json (working notes, should stay untracked or go in .gitignore).
+
+Commit 2 — feat(storage): Phase 1 local storage, cloud sync, and history
+Stage all Phase 1 new files:
+
+lib/models/conversation_record.dart, cloud_models.dart, sync_summary.dart
+All lib/services/ Phase 1 files
+lib/view_models/history_view_model.dart
+lib/screens/history_screen.dart
+All new test files under test/unit/ and test/widget/
+pubspec.yaml and pubspec.lock
+Verdict
+Approved pending two fixes: close the _db leak in ConversationStore._open(), and remove flutter_secure_storage from pubspec.yaml. Neither requires structural changes — both are one-liners. After those are done, the implementation is ready to commit.
