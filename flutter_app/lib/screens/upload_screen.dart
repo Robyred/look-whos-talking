@@ -5,10 +5,15 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../services/cloud_storage_provider.dart';
+import '../services/conversation_store.dart';
 import 'processing_screen.dart';
 
 class UploadScreen extends StatefulWidget {
-  const UploadScreen({super.key});
+  final ConversationStore store;
+  final CloudStorageProvider cloud;
+
+  const UploadScreen({super.key, required this.store, required this.cloud});
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
@@ -68,7 +73,15 @@ class _UploadScreenState extends State<UploadScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ProcessingScreen(audioFile: _selectedFile!),
+        builder: (_) => ProcessingScreen(
+          audioFile: _selectedFile!,
+          store: widget.store,
+          cloud: widget.cloud,
+          sourceFilename: _selectedName,
+          // The picked file lives in the picker's cache, so its path is not
+          // persisted for History playback.
+          retainAudio: false,
+        ),
       ),
     );
   }

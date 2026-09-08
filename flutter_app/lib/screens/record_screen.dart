@@ -5,10 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../services/cloud_storage_provider.dart';
+import '../services/conversation_store.dart';
 import 'processing_screen.dart';
 
 class RecordScreen extends StatefulWidget {
-  const RecordScreen({super.key});
+  final ConversationStore store;
+  final CloudStorageProvider cloud;
+
+  const RecordScreen({super.key, required this.store, required this.cloud});
 
   @override
   State<RecordScreen> createState() => _RecordScreenState();
@@ -18,6 +23,7 @@ class _RecordScreenState extends State<RecordScreen> {
   final _recorder = AudioRecorder();
   bool _isRecording = false;
   String? _recordedPath;
+  DateTime? _recordedAt;
   Duration _elapsed = Duration.zero;
   Timer? _timer;
 
@@ -54,6 +60,7 @@ class _RecordScreenState extends State<RecordScreen> {
     setState(() {
       _isRecording = true;
       _recordedPath = null;
+      _recordedAt = null;
       _elapsed = Duration.zero;
     });
 
@@ -68,15 +75,23 @@ class _RecordScreenState extends State<RecordScreen> {
     setState(() {
       _isRecording = false;
       _recordedPath = path;
+      _recordedAt = DateTime.now();
     });
   }
 
   void _analyzeRecording() {
     if (_recordedPath == null) return;
+    final recordedAt = _recordedAt ?? DateTime.now();
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ProcessingScreen(audioFile: File(_recordedPath!)),
+        builder: (_) => ProcessingScreen(
+          audioFile: File(_recordedPath!),
+          store: widget.store,
+          cloud: widget.cloud,
+          sourceFilename: recordingDisplayName(recordedAt),
+          retainAudio: true, // lives in app documents — worth persisting
+        ),
       ),
     );
   }

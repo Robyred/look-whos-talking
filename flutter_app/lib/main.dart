@@ -1,13 +1,31 @@
 import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';
+import 'services/cloud_storage_provider.dart';
+import 'services/conversation_store.dart';
+import 'services/google_drive_services.dart';
 
-void main() {
-  runApp(const LookWhosTalkingApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // One shared store + cloud provider for the whole app: ProcessingScreen
+  // saves into the same store the History screen reads, and both sync
+  // through the same Google Drive provider.
+  final ConversationStore store = ConversationStore();
+  final CloudStorageProvider cloud = await createGoogleDriveProvider();
+
+  runApp(LookWhosTalkingApp(store: store, cloud: cloud));
 }
 
 class LookWhosTalkingApp extends StatelessWidget {
-  const LookWhosTalkingApp({super.key});
+  final ConversationStore store;
+  final CloudStorageProvider cloud;
+
+  const LookWhosTalkingApp({
+    super.key,
+    required this.store,
+    required this.cloud,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +51,7 @@ class LookWhosTalkingApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const HomeScreen(),
+      home: HomeScreen(store: store, cloud: cloud),
     );
   }
 }

@@ -31,8 +31,14 @@ class HistoryViewModel extends ChangeNotifier {
   bool get hasUnsynced => records.any((r) => !r.isSynced);
 
   /// Reads the cloud auth state so the screen can show/hide sync actions.
+  /// An error (e.g. no sign-in plugin on this host) simply reads as
+  /// "not authenticated" — never crash the screen over it.
   Future<void> refreshCloudAuth() async {
-    cloudAuthenticated = await syncService.provider.isAuthenticated();
+    try {
+      cloudAuthenticated = await syncService.provider.isAuthenticated();
+    } catch (_) {
+      cloudAuthenticated = false;
+    }
     notifyListeners();
   }
 

@@ -1,0 +1,101 @@
+﻿BEGIN SPEC DOCUMENT
+
+Look Who's Talking — Phase 1 Wiring Spec
+Purpose: Connect the completed Phase 1 storage/history implementation to the live app. No new services or business logic — only call sites and navigation.
+
+Prerequisite: Phase 1 storage/history branch (phase1-storage) — all services, models, and screens already exist.
+
+1. Persist completed jobs — ProcessingScreen
+File: flutter_app/lib/screens/processing_screen.dart
+
+After the backend returns a successful DiarizationResult, call ConversationStore.save() before navigating to ResultsScreen.
+
+
+On successful job completion (status == completed, result != null):
+
+1. Construct a ConversationRecord:
+   id          = job_id (String, from the polling response)
+   filename    = the original filename passed into ProcessingScreen
+                 (or "Recording YYYY-MM-DD HH:mm" if none)
+   createdAt   = DateTime.now()
+   durationSec = result.totalDurationSec
+   speakerCount = result.speakerCount
+   resultJson  = raw JSON string of the DiarizationResult
+                 (the string received from the HTTP response, not re-encoded)
+   audioPath   = local path to the recorded/uploaded audio file,
+                 if available; null otherwise
+   isSynced    = false (default)
+
+2. Call ConversationStore.save(record).
+   This is best-effort: if it throws, log the error and continue —
+   do not block navigation to ResultsScreen.
+
+3. If a CloudStorageProvider is available and isAuthenticated() == true,
+   call SyncService.syncConversation(id) in the background (unawaited).
+   Errors are silently ignored — the user can sync manually from History.
+
+4. Navigate to ResultsScreen as normal.
+Integration points:
+
+ConversationStore and SyncService injected into ProcessingScreen via constructor
+The raw JSON string must be preserved as-is; do not re-serialize the parsed model
+audioPath is available if the job was started from RecordScreen (local file); null if uploaded from file picker and the original file is not retained
+2. Navigate to History — HomeScreen
+File: flutter_app/lib/screens/home_screen.dart
+
+Add a route from the Home screen to HistoryScreen.
+
+
+Add a "History" entry point to the Home screen. Acceptable as either:
+  (a) A new button/card alongside the existing Record and Upload actions
+  (b) An icon button in the AppBar (trailing)
+
+Tapping it pushes HistoryScreen onto the navigator stack:
+  Navigator.of(context).push(MaterialPageRoute(
+    builder: (_) => HistoryScreen(viewModel: HistoryViewModel(
+      store: <injected ConversationStore>,
+      syncService: SyncService(
+        store: <same ConversationStore>,
+        provider: <injected CloudStorageProvider>,
+      ),
+    )),
+  ))
+Integration points:
+
+ConversationStore and CloudStorageProvider must be the same instances used by ProcessingScreen — create them once, above both screens in the widget tree (e.g. in main.dart or a shared provider), and pass them down
+HistoryViewModel is created fresh each time HistoryScreen is pushed; this is correct behaviour
+3. Cleanup prompt — HomeScreen.initState()
+The spec requires StorageCleanupService.shouldPrompt() to be checked at app launch. Wire this alongside the History navigation change.
+
+
+In HomeScreen.initState() (or didChangeDependencies):
+
+1. Instantiate StorageCleanupService(store: <injected store>).
+2. Call shouldPrompt(). If true:
+   a. Call findOldAudioRecords(olderThanDays: 90) and
+      totalAudioSizeBytes(records) to get count and size.
+   b. Show a dialog with:
+        Title:   "Free up storage?"
+        Body:    "{n} recording(s) older than 90 days
+                  ({size} MB). Delete audio files?
+                  Transcripts and insights are kept."
+        Actions:
+          "Delete audio"   → deleteAudioForRecords(records)
+                             then recordPromptShown()
+          "Keep for now"   → recordPromptShown() only
+                             (suppresses for 30 days)
+          "Remind me later" → no action (re-prompts next launch)
+3. Show the dialog after the first frame
+   (use WidgetsBinding.instance.addPostFrameCallback) so it
+   does not interrupt the build phase.
+Dependency wiring summary
+All three wiring points share the same ConversationStore and CloudStorageProvider instances. The simplest approach for Phase 1 is to construct them once in main.dart and pass them as constructor arguments through the widget tree. A proper DI framework is not required.
+
+
+ConversationStore store = ConversationStore();
+CloudStorageProvider cloudProvider = await createGoogleDriveProvider();
+
+runApp(MyApp(store: store, cloudProvider: cloudProvider));
+MyApp passes both down to HomeScreen and ProcessingScreen via constructors.
+
+END SPEC DOCUMENT

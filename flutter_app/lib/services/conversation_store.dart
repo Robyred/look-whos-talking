@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
@@ -137,7 +136,6 @@ class ConversationStore {
   }
 
   /// Test seam: the live database handle, so tests can assert it was closed.
-  @visibleForTesting
   Database? get debugDatabase => _db;
 
   Future<void> _deleteFileIfPresent(File file) async {

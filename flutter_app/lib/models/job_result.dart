@@ -1,4 +1,5 @@
 // Dart mirrors of the FastAPI response models in backend/models.py.
+import 'dart:convert';
 
 class SpeakerResult {
   final String speakerId;
@@ -87,12 +88,19 @@ class JobStatusResponse {
   final String? error;
   final DiarizationResult? result;
 
+  /// The backend's result object exactly as it arrived over HTTP (encoded
+  /// from the decoded payload, never from a re-serialised model), so History
+  /// can persist verbatim what the server returned. Null until the job
+  /// completes with a result.
+  final String? rawResultJson;
+
   const JobStatusResponse({
     required this.jobId,
     required this.filename,
     required this.status,
     this.error,
     this.result,
+    this.rawResultJson,
   });
 
   factory JobStatusResponse.fromJson(Map<String, dynamic> json) {
@@ -112,6 +120,8 @@ class JobStatusResponse {
       result: json['result'] != null
           ? DiarizationResult.fromJson(json['result'] as Map<String, dynamic>)
           : null,
+      rawResultJson:
+          json['result'] != null ? jsonEncode(json['result']) : null,
     );
   }
 }

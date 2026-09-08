@@ -3,14 +3,47 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 
+import '../services/cloud_storage_provider.dart';
+import '../services/conversation_store.dart';
+import '../services/persist_completed_job.dart';
 import '../view_models/processing_view_model.dart';
 import '../widgets/speaker_picker.dart';
 import 'name_review_screen.dart';
 
+/// Display name for a recording with no original filename, e.g.
+/// "Recording 2026-09-08 14:05".
+String recordingDisplayName(DateTime t) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  return 'Recording ${t.year}-${two(t.month)}-${two(t.day)} '
+      '${two(t.hour)}:${two(t.minute)}';
+}
+
 class ProcessingScreen extends StatefulWidget {
   final File audioFile;
 
-  const ProcessingScreen({super.key, required this.audioFile});
+  /// Shared local store the completed job is saved into.
+  final ConversationStore store;
+
+  /// Cloud backend used for background sync after a successful save.
+  final CloudStorageProvider cloud;
+
+  /// Original filename (uploads); null means the audio came from a recording
+  /// and the fallback "Recording YYYY-MM-DD HH:mm" label is used.
+  final String? sourceFilename;
+
+  /// True when the audio file lives somewhere durable (a fresh recording in
+  /// app documents) and its path should be persisted for later playback.
+  /// Uploaded files live in the picker's cache, so their paths are not kept.
+  final bool retainAudio;
+
+  const ProcessingScreen({
+    super.key,
+    required this.audioFile,
+    required this.store,
+    required this.cloud,
+    this.sourceFilename,
+    this.retainAudio = false,
+  });
 
   @override
   State<ProcessingScreen> createState() => _ProcessingScreenState();
@@ -28,18 +61,39 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
 
   void _onVmChanged() {
     if (_vm.phase == ProcessingPhase.complete && mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => NameReviewScreen(
-            jobId: _vm.completedStatus!.jobId,
-            result: _vm.completedStatus!.result!,
-            proposals: _vm.detectionResult!.proposals,
-            audioFile: widget.audioFile,
-          ),
-        ),
-      );
+      _persistAndContinue();
     }
+  }
+
+  // Saves the completed job (best-effort, never throws) before moving on to
+  // name review / results so the history record exists even if the user
+  // quits right after.
+  Future<void> _persistAndContinue() async {
+    final status = _vm.completedStatus!;
+    final result = status.result!;
+    await persistCompletedJob(
+      store: widget.store,
+      cloud: widget.cloud,
+      jobId: status.jobId,
+      filename: widget.sourceFilename ?? recordingDisplayName(DateTime.now()),
+      createdAt: DateTime.now(),
+      durationSec: result.totalDurationSec,
+      speakerCount: result.speakerCount,
+      resultJson: status.rawResultJson ?? '',
+      audioPath: widget.retainAudio ? widget.audioFile.path : null,
+    );
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NameReviewScreen(
+          jobId: status.jobId,
+          result: result,
+          proposals: _vm.detectionResult!.proposals,
+          audioFile: widget.audioFile,
+        ),
+      ),
+    );
   }
 
   @override
