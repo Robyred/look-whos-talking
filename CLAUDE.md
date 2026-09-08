@@ -37,3 +37,6 @@ tests/             # Unit tests, one file per module
 2. Simple web UI — list samples, then upload
 3. Flutter mobile port
 4. Rust/C for compute-heavy bottlenecks (profile first)
+
+## Also see
+- `Jack's DeepSeek preferences.md` — Jack's personal preferences & working notes for DeepSeek sessions. Read it when starting work; update it when Jack states a preference or standing decision.

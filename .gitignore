@@ -10,6 +10,10 @@ data/
 
 # Personal docs
 Jack's documentation etc/
+Jack's DeepSeek preferences.md
+
+# Sandbox-local Flutter SDK + caches (not part of the repo)
+.dsh/
 
 # Editors
 .vscode/

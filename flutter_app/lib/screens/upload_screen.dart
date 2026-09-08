@@ -1,7 +1,9 @@
 import 'dart:io';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 
 import 'processing_screen.dart';
 
@@ -15,6 +17,14 @@ class UploadScreen extends StatefulWidget {
 class _UploadScreenState extends State<UploadScreen> {
   File? _selectedFile;
   String? _selectedName;
+  AudioPlayer? _previewPlayer;
+  bool _previewReady = false;
+
+  @override
+  void dispose() {
+    _previewPlayer?.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickFile() async {
     final picked = await FilePicker.pickFile(
@@ -24,14 +34,37 @@ class _UploadScreenState extends State<UploadScreen> {
 
     if (picked == null || picked.path == null) return;
 
-    setState(() {
-      _selectedFile = File(picked.path!);
-      _selectedName = picked.name;
-    });
+    await _previewPlayer?.dispose();
+    _previewPlayer = null;
+    if (mounted) {
+      setState(() {
+        _selectedFile = File(picked.path!);
+        _selectedName = picked.name;
+        _previewReady = false;
+      });
+    }
+
+    final player = AudioPlayer();
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.speech());
+      await player.setFilePath(picked.path!);
+      if (mounted) {
+        setState(() {
+          _previewPlayer = player;
+          _previewReady = true;
+        });
+      } else {
+        player.dispose();
+      }
+    } catch (_) {
+      player.dispose();
+    }
   }
 
   void _analyze() {
     if (_selectedFile == null) return;
+    _previewPlayer?.pause();
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -97,6 +130,10 @@ class _UploadScreenState extends State<UploadScreen> {
                     ),
                   ),
                 ),
+                if (_previewReady && _previewPlayer != null) ...[
+                  const SizedBox(height: 16),
+                  _AudioPreview(player: _previewPlayer!),
+                ],
                 const Spacer(),
                 if (_selectedName != null) ...[
                   FilledButton.icon(
@@ -120,6 +157,87 @@ class _UploadScreenState extends State<UploadScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AudioPreview extends StatelessWidget {
+  final AudioPlayer player;
+
+  const _AudioPreview({required this.player});
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: StreamBuilder<Duration?>(
+          stream: player.durationStream,
+          builder: (context, durSnap) {
+            final total = durSnap.data ?? Duration.zero;
+            final totalMs = total.inMilliseconds.toDouble();
+            return StreamBuilder<Duration>(
+              stream: player.positionStream,
+              builder: (context, posSnap) {
+                final pos = posSnap.data ?? Duration.zero;
+                final posMs = pos.inMilliseconds.toDouble().clamp(0.0, totalMs);
+                return Row(
+                  children: [
+                    StreamBuilder<PlayerState>(
+                      stream: player.playerStateStream,
+                      builder: (context, stateSnap) {
+                        final playing = stateSnap.data?.playing ?? false;
+                        final completed = stateSnap.data?.processingState ==
+                            ProcessingState.completed;
+                        return IconButton(
+                          icon: Icon(completed
+                              ? Icons.replay
+                              : playing
+                                  ? Icons.pause
+                                  : Icons.play_arrow),
+                          onPressed: () async {
+                            if (completed) {
+                              await player.seek(Duration.zero);
+                              await player.play();
+                            } else if (playing) {
+                              await player.pause();
+                            } else {
+                              await player.play();
+                            }
+                          },
+                        );
+                      },
+                    ),
+                    Text(_fmt(pos),
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.grey[600])),
+                    Expanded(
+                      child: Slider(
+                        value: totalMs > 0 ? posMs : 0,
+                        max: totalMs > 0 ? totalMs : 1,
+                        onChanged: totalMs > 0
+                            ? (v) => player
+                                .seek(Duration(milliseconds: v.toInt()))
+                            : null,
+                      ),
+                    ),
+                    Text(_fmt(total),
+                        style: TextStyle(
+                            fontSize: 12, color: Colors.grey[600])),
+                  ],
+                );
+              },
+            );
+          },
         ),
       ),
     );

@@ -30,6 +30,17 @@ from transcription.transcriber import transcribe
 router = APIRouter()
 
 
+def _renumber_speakers_by_appearance(
+    timeline: list[tuple[str, float, float]],
+) -> list[tuple[str, float, float]]:
+    """Reassign IDs so the first speaker heard becomes SPEAKER_00, etc."""
+    seen: dict[str, str] = {}
+    for speaker, _, _ in sorted(timeline, key=lambda x: x[1]):
+        if speaker not in seen:
+            seen[speaker] = f"SPEAKER_{len(seen):02d}"
+    return [(seen[s], start, end) for s, start, end in timeline]
+
+
 def _run_pipeline(
     job_id: str,
     audio_path: Path,
@@ -48,6 +59,7 @@ def _run_pipeline(
             job_id[:8], len(audio) / SAMPLE_RATE, min_speakers, max_speakers,
         )
         timeline = diarise(audio, min_speakers=min_speakers, max_speakers=max_speakers)
+        timeline = _renumber_speakers_by_appearance(timeline)
         total_duration = len(audio) / SAMPLE_RATE
         metrics = calculate_metrics(timeline, total_duration)
         logger.info("[%s] diarization done: %d speaker(s)", job_id[:8], metrics.speaker_count)

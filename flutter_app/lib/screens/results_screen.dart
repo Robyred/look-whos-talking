@@ -18,6 +18,15 @@ String _formatSec(double sec) {
   return '$m:$s';
 }
 
+String _formatDuration(double sec) {
+  final h = sec ~/ 3600;
+  final m = (sec ~/ 60) % 60;
+  final s = sec.toInt() % 60;
+  if (h > 0) return '${h}h ${m}m ${s}s';
+  if (m > 0) return '${m}m ${s}s';
+  return '${s}s';
+}
+
 class ResultsScreen extends StatefulWidget {
   final String jobId;
   final DiarizationResult result;
@@ -80,32 +89,36 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Results')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (var i = 0; i < tabs.length; i++)
-                  NavButton(
-                    icon: tabs[i].$1,
-                    label: tabs[i].$2,
-                    selected: _tab == i,
-                    onTap: () => setState(() => _tab = i),
-                  ),
-              ],
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var i = 0; i < tabs.length; i++)
+                    NavButton(
+                      icon: tabs[i].$1,
+                      label: tabs[i].$2,
+                      selected: _tab == i,
+                      onTap: () => setState(() => _tab = i),
+                    ),
+                ],
+              ),
             ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: IndexedStack(
-              index: _tab,
-              children: content,
+            const Divider(height: 1),
+            Expanded(
+              child: IndexedStack(
+                index: _tab,
+                children: content,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -169,7 +182,7 @@ class _SummaryCard extends StatelessWidget {
                 ),
                 _StatChip(
                   icon: Icons.timer,
-                  label: _formatSec(result.totalDurationSec),
+                  label: _formatDuration(result.totalDurationSec),
                 ),
                 _StatChip(
                   icon: Icons.volume_up,
