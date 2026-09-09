@@ -1,0 +1,823 @@
+# Look Who's Talking — Phase 1: Settings, Cloud Storage & Extended Share
+
+---
+
+## Overview
+
+Four features in one pass:
+
+1. **Settings screen** — entry point for cloud storage connections, accessible
+   from the HomeScreen AppBar.
+
+2. **OneDrive provider** — second CloudStorageProvider implementation, using
+   the Microsoft Graph API with OAuth2 PKCE.
+
+3. **Dropbox provider** — third CloudStorageProvider implementation, using the
+   Dropbox API v2 with OAuth2 PKCE.
+
+4. **Extended share** — adds share buttons to the Overview and Q&A tabs, which
+   currently have none. Transcript and Insights already have share buttons.
+
+All three providers implement the existing abstract CloudStorageProvider
+interface unchanged (except for a new displayName getter). Settings screen
+connects/disconnects any of them. Sync wiring for OneDrive and Dropbox is a
+future task — this pass is connect/disconnect only for those two.
+
+---
+
+## 1. Settings screen
+
+### 1.1 Navigation
+
+Add a gear icon to the HomeScreen AppBar. It sits to the left of the existing
+history icon:
+
+    AppBar trailing icons (left to right):
+      ⚙  Settings  → pushes SettingsScreen
+      🕐  History   → pushes HistoryScreen (existing)
+
+### 1.2 HomeScreen change
+
+Add one parameter to HomeScreen:
+
+    final List<CloudStorageProvider> cloudProviders;
+
+    const HomeScreen({
+      super.key,
+      required this.store,
+      required this.cloud,        // existing — unchanged for wiring purposes
+      this.cloudProviders = const [],
+    });
+
+`cloudProviders` is the list passed to SettingsScreen. It contains
+[googleDriveProvider, oneDriveProvider, dropboxProvider] from main.dart.
+
+Add the settings icon to AppBar.actions (left of history):
+
+    IconButton(
+      icon: const Icon(Icons.settings_outlined),
+      tooltip: 'Settings',
+      onPressed: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SettingsScreen(providers: widget.cloudProviders),
+        ),
+      ),
+    ),
+
+### 1.3 SettingsScreen widget
+
+File: lib/screens/settings_screen.dart
+
+    class SettingsScreen extends StatefulWidget {
+      final List<CloudStorageProvider> providers;
+      const SettingsScreen({super.key, required this.providers});
+      ...
+    }
+
+State: Map<CloudStorageProvider, bool> _authState  — loaded in initState.
+A bool _loading flag prevents double-taps during async calls.
+
+Layout — a single Scaffold with ListView:
+
+    Section header: "Cloud storage"
+
+    For each provider in providers, one _ProviderRow:
+      - Leading: provider icon + provider name
+      - Trailing: "Connect" button (if not authenticated)
+                  or "Connected ✓" + "Disconnect" button (if authenticated)
+      - Status subtitle: account email if available, else grey "Not connected"
+
+    Section header: "About"  (optional, add later)
+
+_ProviderRow is a stateless widget that receives:
+  - CloudStorageProvider provider
+  - bool isAuthenticated
+  - bool loading
+  - VoidCallback onConnect
+  - VoidCallback onDisconnect
+
+SettingsScreen handles the async:
+
+    Future<void> _connect(CloudStorageProvider p) async {
+      setState(() => _loading = true);
+      try {
+        await p.authenticate();
+        _authState[p] = await p.isAuthenticated();
+      } on AuthException {
+        // user cancelled — no snack needed
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not connect — $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _loading = false);
+      }
+    }
+
+    Future<void> _disconnect(CloudStorageProvider p) async {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text('Disconnect ${p.displayName}?'),
+          content: const Text("Your files won't be deleted."),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false),
+                       child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(context, true),
+                       child: const Text('Disconnect')),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      setState(() => _loading = true);
+      try {
+        await p.signOut();
+        _authState[p] = false;
+      } finally {
+        if (mounted) setState(() => _loading = false);
+      }
+    }
+
+### 1.4 CloudStorageProvider interface — displayName
+
+Add one getter to the abstract interface:
+
+    String get displayName;
+
+Implementations return:
+  GoogleDriveProvider  → 'Google Drive'
+  OneDriveProvider     → 'OneDrive'
+  DropboxProvider      → 'Dropbox'
+
+This is the only change to the existing interface.
+
+### 1.5 main.dart change
+
+Construct all three providers and pass them to HomeScreen:
+
+    Future<void> main() async {
+      WidgetsFlutterBinding.ensureInitialized();
+      final store = ConversationStore();
+      final google = await createGoogleDriveProvider();
+      final oneDrive = createOneDriveProvider();
+      final dropbox = createDropboxProvider();
+      runApp(LookWhosTalkingApp(
+        store: store,
+        cloud: google,                                  // primary (existing wiring)
+        cloudProviders: [google, oneDrive, dropbox],   // for Settings screen
+      ));
+    }
+
+LookWhosTalkingApp gains a cloudProviders field and passes it to HomeScreen.
+No other screen needs to know about multiple providers — sync still runs
+through the single `cloud` instance (Google Drive). OneDrive and Dropbox sync
+wiring are future tasks.
+
+---
+
+## 2. Packages
+
+Add to pubspec.yaml:
+  flutter_appauth: ^8.0.0         # OAuth2 PKCE — handles Microsoft and Dropbox
+  flutter_secure_storage: ^9.0.0  # stores refresh tokens for OneDrive and Dropbox
+
+flutter_secure_storage was deliberately removed from pubspec in the Phase 1
+clean-up (google_sign_in manages its own tokens). OneDrive and Dropbox have no
+equivalent SDK, so manual token storage is required. Add it back.
+
+flutter_appauth handles both providers — same package, different endpoints.
+
+---
+
+## 3. OneDriveProvider
+
+### 3.1 Azure App Registration (one-time manual setup)
+
+Before the code can be tested:
+1. Go to portal.azure.com → Azure Active Directory → App registrations → New.
+2. Name: "Look Who's Talking".  Supported account types: "Accounts in any
+   organizational directory and personal Microsoft accounts".
+3. Redirect URI (Mobile and desktop applications):
+       msauth.{your.package.name}://auth
+   For Android the package name is the applicationId in build.gradle.
+4. Under API permissions → Add Files.ReadWrite.AppFolder + offline_access.
+5. Copy the Application (client) ID.
+6. Add the MSAL redirect activity to AndroidManifest.xml (see section 3.4).
+
+### 3.2 OneDriveProvider implementation
+
+File: lib/services/onedrive_provider.dart
+
+Class: OneDriveProvider implements CloudStorageProvider
+
+Constants (top of file, not in class):
+  const _odClientId   = 'YOUR_AZURE_CLIENT_ID';   // replaced at setup
+  const _odRedirectUrl = 'msauth.{package}://auth';
+  const _odScopes      = ['Files.ReadWrite.AppFolder', 'offline_access'];
+  const _odAppFolder   = 'Look Who\'s Talking';
+  const _odTokenKey    = 'onedrive_refresh_token';
+  const _odGraphBase   =
+      'https://graph.microsoft.com/v1.0/me/drive/special/approot:/$_odAppFolder';
+
+#### Authentication
+
+  final FlutterAppAuth _appAuth = const FlutterAppAuth();
+  final FlutterSecureStorage _secure = const FlutterSecureStorage();
+  String? _accessToken;
+
+  @override
+  String get displayName => 'OneDrive';
+
+  @override
+  Future<void> authenticate() async {
+    final result = await _appAuth.authorizeAndExchangeCode(
+      AuthorizationTokenRequest(
+        _odClientId,
+        _odRedirectUrl,
+        serviceConfiguration: const AuthorizationServiceConfiguration(
+          authorizationEndpoint:
+              'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+          tokenEndpoint:
+              'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+        ),
+        scopes: _odScopes,
+      ),
+    );
+    _accessToken = result.accessToken;
+    if (result.refreshToken != null) {
+      await _secure.write(key: _odTokenKey, value: result.refreshToken);
+    }
+  }
+
+  @override
+  Future<bool> isAuthenticated() async {
+    if (_accessToken != null) return true;
+    final refresh = await _secure.read(key: _odTokenKey);
+    if (refresh == null) return false;
+    return _silentRefresh(refresh);
+  }
+
+  Future<bool> _silentRefresh(String refreshToken) async {
+    try {
+      final result = await _appAuth.token(
+        TokenRequest(
+          _odClientId,
+          _odRedirectUrl,
+          serviceConfiguration: const AuthorizationServiceConfiguration(
+            authorizationEndpoint:
+                'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+            tokenEndpoint:
+                'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+          ),
+          refreshToken: refreshToken,
+          scopes: _odScopes,
+        ),
+      );
+      _accessToken = result.accessToken;
+      if (result.refreshToken != null) {
+        await _secure.write(key: _odTokenKey, value: result.refreshToken);
+      }
+      return _accessToken != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> signOut() async {
+    _accessToken = null;
+    await _secure.delete(key: _odTokenKey);
+  }
+
+#### upload
+
+Use upload sessions — they work for any file size (avoids a size-conditional
+split between simple PUT and session).
+
+  @override
+  Future<void> upload(String localPath, String remotePath) async {
+    final filename = remotePath.split('/').last;
+    final sessionResp = await http.post(
+      Uri.parse('$_odGraphBase/$filename:/createUploadSession'),
+      headers: {
+        'Authorization': 'Bearer $_accessToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'item': {'@microsoft.graph.conflictBehavior': 'replace'}}),
+    );
+    _checkOdStatus(sessionResp);
+    final uploadUrl =
+        (jsonDecode(sessionResp.body) as Map)['uploadUrl'] as String;
+
+    final bytes = await File(localPath).readAsBytes();
+    final uploadResp = await http.put(
+      Uri.parse(uploadUrl),
+      headers: {
+        'Content-Length': '${bytes.length}',
+        'Content-Range': 'bytes 0-${bytes.length - 1}/${bytes.length}',
+      },
+      body: bytes,
+    );
+    if (uploadResp.statusCode != 200 && uploadResp.statusCode != 201) {
+      throw StorageException('OneDrive upload failed: ${uploadResp.statusCode}');
+    }
+  }
+
+#### download
+
+  @override
+  Future<void> download(String remotePath, String localPath) async {
+    final filename = remotePath.split('/').last;
+    final metaResp = await http.get(
+      Uri.parse('$_odGraphBase/$filename'),
+      headers: {'Authorization': 'Bearer $_accessToken'},
+    );
+    _checkOdStatus(metaResp);
+    final downloadUrl =
+        (jsonDecode(metaResp.body) as Map)['@microsoft.graph.downloadUrl']
+            as String;
+    final contentResp = await http.get(Uri.parse(downloadUrl));
+    if (contentResp.statusCode != 200) {
+      throw StorageException('OneDrive download failed: ${contentResp.statusCode}');
+    }
+    await File(localPath).writeAsBytes(contentResp.bodyBytes);
+  }
+
+#### listFiles
+
+  @override
+  Future<List<RemoteFileInfo>> listFiles(String folder) async {
+    final resp = await http.get(
+      Uri.parse('$_odGraphBase/children'),
+      headers: {'Authorization': 'Bearer $_accessToken'},
+    );
+    _checkOdStatus(resp);
+    final items =
+        (jsonDecode(resp.body)['value'] as List).cast<Map<String, dynamic>>();
+    return items
+        .map((item) => RemoteFileInfo(
+              remotePath: '$_odAppFolder/${item['name']}',
+              filename: item['name'] as String,
+              sizeBytes: item['size'] as int? ?? 0,
+              modifiedAt:
+                  DateTime.parse(item['lastModifiedDateTime'] as String),
+            ))
+        .toList();
+  }
+
+#### deleteFile
+
+  @override
+  Future<void> deleteFile(String remotePath) async {
+    final filename = remotePath.split('/').last;
+    final resp = await http.delete(
+      Uri.parse('$_odGraphBase/$filename'),
+      headers: {'Authorization': 'Bearer $_accessToken'},
+    );
+    if (resp.statusCode != 204 && resp.statusCode != 404) {
+      throw StorageException('OneDrive delete failed: ${resp.statusCode}');
+    }
+    // 404 → already deleted → idempotent, no-op.
+  }
+
+  void _checkOdStatus(http.Response r) {
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      throw StorageException('Graph API ${r.statusCode}: ${r.body}');
+    }
+  }
+
+#### Factory function
+
+File: lib/services/onedrive_services.dart
+
+    OneDriveProvider createOneDriveProvider() => OneDriveProvider();
+
+No async setup needed — token state loaded lazily in isAuthenticated().
+
+### 3.3 AndroidManifest.xml (OneDrive redirect)
+
+Add inside the <application> tag (not inside the main <activity>).
+This entry also covers the Dropbox redirect if both schemes are registered:
+
+    <activity
+      android:name="net.openid.appauth.RedirectUriReceiverActivity"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="msauth.{your.package.name}" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:scheme="db-{your.dropbox.app.key}" />
+      </intent-filter>
+    </activity>
+
+Both intent-filters go inside the same RedirectUriReceiverActivity.
+Replace placeholders with real values after app registration.
+
+---
+
+## 4. DropboxProvider
+
+### 4.1 Dropbox App Registration (one-time manual setup)
+
+Before the code can be tested:
+1. Go to www.dropbox.com/developers → App Console → Create app.
+2. API: Scoped access.  Access type: App folder.
+   Name: "Look Who's Talking".
+3. Under Permissions tab: enable files.content.write + files.content.read.
+4. Under Settings tab, add redirect URI:
+       db-{app.key}://2/token
+   (The app key appears at the top of the Settings page.)
+5. Copy the App key — this is the client ID.
+
+App folder access means all paths are relative to
+  /Apps/Look Who's Talking/
+in the user's Dropbox. The app cannot read anything outside this folder.
+
+### 4.2 DropboxProvider implementation
+
+File: lib/services/dropbox_provider.dart
+
+Class: DropboxProvider implements CloudStorageProvider
+
+Constants (top of file, not in class):
+  const _dbAppKey      = 'YOUR_DROPBOX_APP_KEY';   // replaced at setup
+  const _dbRedirectUrl = 'db-{app.key}://2/token';
+  const _dbScopes      = ['files.content.write', 'files.content.read',
+                          'account_info.read'];
+  const _dbTokenKey    = 'dropbox_refresh_token';
+  const _dbUploadUrl   = 'https://content.dropboxapi.com/2/files/upload';
+  const _dbDownloadUrl = 'https://content.dropboxapi.com/2/files/download';
+  const _dbListUrl     = 'https://api.dropboxapi.com/2/files/list_folder';
+  const _dbDeleteUrl   = 'https://api.dropboxapi.com/2/files/delete_v2';
+
+#### Authentication
+
+Dropbox requires token_access_type=offline to receive a refresh token.
+Pass it as an additionalParameters entry.
+
+  final FlutterAppAuth _appAuth = const FlutterAppAuth();
+  final FlutterSecureStorage _secure = const FlutterSecureStorage();
+  String? _accessToken;
+
+  @override
+  String get displayName => 'Dropbox';
+
+  @override
+  Future<void> authenticate() async {
+    final result = await _appAuth.authorizeAndExchangeCode(
+      AuthorizationTokenRequest(
+        _dbAppKey,
+        _dbRedirectUrl,
+        serviceConfiguration: const AuthorizationServiceConfiguration(
+          authorizationEndpoint: 'https://www.dropbox.com/oauth2/authorize',
+          tokenEndpoint: 'https://api.dropboxapi.com/oauth2/token',
+        ),
+        scopes: _dbScopes,
+        additionalParameters: {'token_access_type': 'offline'},
+      ),
+    );
+    _accessToken = result.accessToken;
+    if (result.refreshToken != null) {
+      await _secure.write(key: _dbTokenKey, value: result.refreshToken);
+    }
+  }
+
+  @override
+  Future<bool> isAuthenticated() async {
+    if (_accessToken != null) return true;
+    final refresh = await _secure.read(key: _dbTokenKey);
+    if (refresh == null) return false;
+    return _silentRefresh(refresh);
+  }
+
+  Future<bool> _silentRefresh(String refreshToken) async {
+    try {
+      final result = await _appAuth.token(
+        TokenRequest(
+          _dbAppKey,
+          _dbRedirectUrl,
+          serviceConfiguration: const AuthorizationServiceConfiguration(
+            authorizationEndpoint: 'https://www.dropbox.com/oauth2/authorize',
+            tokenEndpoint: 'https://api.dropboxapi.com/oauth2/token',
+          ),
+          refreshToken: refreshToken,
+          scopes: _dbScopes,
+        ),
+      );
+      _accessToken = result.accessToken;
+      if (result.refreshToken != null) {
+        await _secure.write(key: _dbTokenKey, value: result.refreshToken);
+      }
+      return _accessToken != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> signOut() async {
+    _accessToken = null;
+    await _secure.delete(key: _dbTokenKey);
+  }
+
+#### upload
+
+Dropbox upload: simple POST with Dropbox-API-Arg header.
+Use mode: overwrite to avoid duplicates (same semantics as GoogleDriveProvider).
+
+  @override
+  Future<void> upload(String localPath, String remotePath) async {
+    final filename = remotePath.split('/').last;
+    final arg = jsonEncode({
+      'path': '/$filename',
+      'mode': 'overwrite',
+      'autorename': false,
+      'mute': true,
+    });
+    final bytes = await File(localPath).readAsBytes();
+    final resp = await http.post(
+      Uri.parse(_dbUploadUrl),
+      headers: {
+        'Authorization': 'Bearer $_accessToken',
+        'Content-Type': 'application/octet-stream',
+        'Dropbox-API-Arg': arg,
+      },
+      body: bytes,
+    );
+    _checkDbStatus(resp);
+  }
+
+Note: Dropbox simple upload supports files up to 150MB. For larger files use
+upload sessions; this is sufficient for typical audio recordings.
+
+#### download
+
+  @override
+  Future<void> download(String remotePath, String localPath) async {
+    final filename = remotePath.split('/').last;
+    final arg = jsonEncode({'path': '/$filename'});
+    final resp = await http.post(
+      Uri.parse(_dbDownloadUrl),
+      headers: {
+        'Authorization': 'Bearer $_accessToken',
+        'Dropbox-API-Arg': arg,
+      },
+    );
+    if (resp.statusCode != 200) {
+      throw StorageException('Dropbox download failed: ${resp.statusCode}');
+    }
+    await File(localPath).writeAsBytes(resp.bodyBytes);
+  }
+
+#### listFiles
+
+  @override
+  Future<List<RemoteFileInfo>> listFiles(String folder) async {
+    final resp = await http.post(
+      Uri.parse(_dbListUrl),
+      headers: {
+        'Authorization': 'Bearer $_accessToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'path': '', 'recursive': false}),
+      // path: '' = app folder root (app folder access type)
+    );
+    _checkDbStatus(resp);
+    final entries =
+        (jsonDecode(resp.body)['entries'] as List).cast<Map<String, dynamic>>();
+    return entries
+        .where((e) => e['.tag'] == 'file')
+        .map((e) => RemoteFileInfo(
+              remotePath: e['path_lower'] as String,
+              filename: e['name'] as String,
+              sizeBytes: e['size'] as int? ?? 0,
+              modifiedAt:
+                  DateTime.parse(e['server_modified'] as String),
+            ))
+        .toList();
+  }
+
+#### deleteFile
+
+  @override
+  Future<void> deleteFile(String remotePath) async {
+    final filename = remotePath.split('/').last;
+    final resp = await http.post(
+      Uri.parse(_dbDeleteUrl),
+      headers: {
+        'Authorization': 'Bearer $_accessToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'path': '/$filename'}),
+    );
+    // path_not_found (409) → already deleted → idempotent, no-op.
+    if (resp.statusCode != 200 && resp.statusCode != 409) {
+      _checkDbStatus(resp);
+    }
+  }
+
+  void _checkDbStatus(http.Response r) {
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      throw StorageException('Dropbox API ${r.statusCode}: ${r.body}');
+    }
+  }
+
+#### Factory function
+
+File: lib/services/dropbox_services.dart
+
+    DropboxProvider createDropboxProvider() => DropboxProvider();
+
+---
+
+## 5. Extended share
+
+### 5.1 Current state (no change needed)
+
+- Transcript tab: _ShareBar at bottom → shares full transcript as plain text.
+- Insights tab: two inline share icon buttons → action items, meeting minutes.
+- Overview tab: NO share button.
+- Q&A tab: NO share button.
+
+### 5.2 Overview tab — share speaker metrics
+
+Wrap the existing ListView in a Column and add a _ShareBar at the bottom:
+
+    class _OverviewTab extends StatelessWidget {
+      ...
+      String _metricsText() {
+        final buf = StringBuffer('Speaker metrics — ${result.filename}\n\n');
+        for (final s in result.speakers) {
+          final label = speakerLabel(s.speakerId, nameMap);
+          buf.writeln('$label: ${s.percentage.toStringAsFixed(1)}%'
+              ' · ${_formatDuration(s.durationSec)}');
+        }
+        buf.writeln('\nTotal: ${_formatDuration(result.totalDurationSec)}'
+            ' · ${result.speakerCount} speaker'
+            '${result.speakerCount == 1 ? '' : 's'}');
+        return buf.toString().trim();
+      }
+
+      @override
+      Widget build(BuildContext context) {
+        return Column(
+          children: [
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  _SummaryCard(result: result),
+                  const SizedBox(height: 16),
+                  Text('Speakers',
+                      style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  ...result.speakers
+                      .map((s) => _SpeakerCard(speaker: s, nameMap: nameMap)),
+                ],
+              ),
+            ),
+            _ShareBar(
+              onShare: () => SharePlus.instance.share(
+                ShareParams(
+                    text: _metricsText(),
+                    subject: 'Speaker metrics — ${result.filename}'),
+              ),
+            ),
+          ],
+        );
+      }
+    }
+
+### 5.3 Q&A tab — share conversation
+
+In _ChatTabState, add a _shareText() helper:
+
+    String _shareText() {
+      final buf = StringBuffer('Q&A\n\n');
+      for (final msg in _vm.messages) {
+        final role = msg.role == 'user' ? 'Q' : 'A';
+        buf.writeln('$role: ${msg.content.trim()}\n');
+      }
+      return buf.toString().trim();
+    }
+
+Inside the Column that holds the message list and the text input, insert this
+between the expanded list and the input row. It is only visible when messages
+exist:
+
+    if (_vm.messages.isNotEmpty)
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        child: Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            icon: const Icon(Icons.share, size: 18),
+            label: const Text('Share Q&A'),
+            onPressed: () => SharePlus.instance.share(
+              ShareParams(text: _shareText(), subject: 'Q&A'),
+            ),
+          ),
+        ),
+      ),
+
+### 5.4 _ShareBar (existing widget — no change)
+
+The existing _ShareBar is reused in OverviewTab. No changes needed.
+
+---
+
+## 6. Testing guidance
+
+### Settings screen
+- SettingsScreen with three FakeCloud providers renders three rows, all
+  showing "Not connected" initially.
+- Tap "Connect" on one → authenticate() called; that row updates to
+  "Connected"; the others are unchanged.
+- Tap "Disconnect" → dialog appears; confirm → signOut() called; row reverts.
+- AuthException on connect → no SnackBar (user cancelled).
+- Generic exception on connect → SnackBar shown.
+
+### OneDriveProvider
+- upload → creates upload session then PUTs the bytes.
+- deleteFile 404 → no exception (idempotent).
+- isAuthenticated() with stored refresh token → calls token endpoint.
+- isAuthenticated() with no stored token → false, no network call.
+- signOut() → secure storage entry cleared.
+
+### DropboxProvider
+- upload → single POST to content endpoint with correct Dropbox-API-Arg.
+- deleteFile 409 (path_not_found) → no exception (idempotent).
+- isAuthenticated() with stored refresh token → calls token endpoint.
+- isAuthenticated() with no stored token → false, no network call.
+- signOut() → secure storage entry cleared.
+
+### Extended share
+- _OverviewTab renders _ShareBar.
+- _ChatTab with messages shows "Share Q&A" button; without messages it is absent.
+
+---
+
+## 7. Files created / modified
+
+### New
+  lib/screens/settings_screen.dart
+  lib/services/onedrive_provider.dart
+  lib/services/onedrive_services.dart
+  lib/services/dropbox_provider.dart
+  lib/services/dropbox_services.dart
+
+### Modified
+  lib/services/cloud_storage_provider.dart    # add displayName getter
+  lib/services/google_drive_provider.dart     # implement displayName → 'Google Drive'
+  lib/screens/home_screen.dart                # cloudProviders param + gear icon
+  lib/screens/results_screen.dart             # _OverviewTab share bar; Q&A share button
+  lib/main.dart                               # construct all three providers; pass list
+  android/app/src/main/AndroidManifest.xml    # MSAL + Dropbox redirect intent-filters
+  pubspec.yaml                                # flutter_appauth, flutter_secure_storage
+
+### Spec-referenced but not changed
+  lib/services/sync_service.dart              # unchanged — sync still goes through Google
+  lib/screens/history_screen.dart             # unchanged in this pass
+
+---
+
+## 8. Commit shape
+
+Single commit on phase1-storage:
+  feat(phase1): settings screen, OneDrive + Dropbox providers, extended share
+
+---
+
+## 9. Notes for the implementer
+
+1. Both client IDs (Azure and Dropbox app key) are placeholder constants.
+   The app will not authenticate until real IDs are registered and the
+   constants are replaced. Registrations take ~5 minutes each.
+
+2. flutter_secure_storage is re-added solely for OneDrive and Dropbox refresh
+   tokens. Google Drive still uses google_sign_in's own token storage — do not
+   route Google tokens through flutter_secure_storage.
+
+3. Dropbox app folder access: all API paths use '' (empty string) for the
+   root, not '/Apps/Look Who's Talking/'. With App folder access type, the
+   root of the app's folder IS '/'. Using the full path will produce 404s.
+
+4. OneDrive upload uses upload sessions for all file sizes. Dropbox uses the
+   simple upload endpoint (supports up to 150MB). Audio files from a phone
+   recording are typically 5–50MB — both approaches are safe for Phase 1.
+
+5. Sync integration for OneDrive and Dropbox (running syncConversation against
+   those providers) is out of scope for this pass. Both providers connect and
+   disconnect cleanly; actual sync wiring is a follow-up task.
+
+6. The Q&A share button is a TextButton.icon rather than a full _ShareBar.
+   This matches the tab's lower-weight, conversational feel.

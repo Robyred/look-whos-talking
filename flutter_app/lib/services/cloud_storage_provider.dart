@@ -19,6 +19,9 @@ class StorageException implements Exception {
 /// Google Drive is the first implementation; Dropbox or others can plug in by
 /// implementing this same interface.
 abstract class CloudStorageProvider {
+  // Human-readable provider name shown in the UI (e.g. "Google Drive").
+  String get displayName;
+
   // Triggers the OAuth2 flow and stores the token securely.
   // Throws [AuthException] if the user cancels or auth fails.
   Future<void> authenticate();

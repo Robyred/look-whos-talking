@@ -3,28 +3,38 @@ import 'package:flutter/material.dart';
 import 'screens/home_screen.dart';
 import 'services/cloud_storage_provider.dart';
 import 'services/conversation_store.dart';
+import 'services/dropbox_services.dart';
 import 'services/google_drive_services.dart';
+import 'services/onedrive_services.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // One shared store + cloud provider for the whole app: ProcessingScreen
-  // saves into the same store the History screen reads, and both sync
-  // through the same Google Drive provider.
+  // One shared store + Google Drive provider drive the sync pipeline (as
+  // before); OneDrive and Dropbox are connect/disconnect only for now, listed
+  // on the Settings screen. They plug into sync in a later task.
   final ConversationStore store = ConversationStore();
-  final CloudStorageProvider cloud = await createGoogleDriveProvider();
+  final google = await createGoogleDriveProvider();
+  final oneDrive = createOneDriveProvider();
+  final dropbox = createDropboxProvider();
 
-  runApp(LookWhosTalkingApp(store: store, cloud: cloud));
+  runApp(LookWhosTalkingApp(
+    store: store,
+    cloud: google, // primary (existing wiring)
+    cloudProviders: [google, oneDrive, dropbox], // for the Settings screen
+  ));
 }
 
 class LookWhosTalkingApp extends StatelessWidget {
   final ConversationStore store;
   final CloudStorageProvider cloud;
+  final List<CloudStorageProvider> cloudProviders;
 
   const LookWhosTalkingApp({
     super.key,
     required this.store,
     required this.cloud,
+    this.cloudProviders = const [],
   });
 
   @override
@@ -51,7 +61,11 @@ class LookWhosTalkingApp extends StatelessWidget {
           ),
         ),
       ),
-      home: HomeScreen(store: store, cloud: cloud),
+      home: HomeScreen(
+        store: store,
+        cloud: cloud,
+        cloudProviders: cloudProviders,
+      ),
     );
   }
 }

@@ -132,17 +132,44 @@ class _OverviewTab extends StatelessWidget {
 
   const _OverviewTab({required this.result, required this.nameMap});
 
+  String _metricsText() {
+    final buf = StringBuffer('Speaker metrics — ${result.filename}\n\n');
+    for (final s in result.speakers) {
+      final label = speakerLabel(s.speakerId, nameMap);
+      buf.writeln('$label: ${s.percentage.toStringAsFixed(1)}%'
+          ' · ${_formatDuration(s.durationSec)}');
+    }
+    buf.writeln('\nTotal: ${_formatDuration(result.totalDurationSec)}'
+        ' · ${result.speakerCount} speaker'
+        '${result.speakerCount == 1 ? '' : 's'}');
+    return buf.toString().trim();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
+    return Column(
       children: [
-        _SummaryCard(result: result),
-        const SizedBox(height: 16),
-        Text('Speakers', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
-        ...result.speakers
-            .map((s) => _SpeakerCard(speaker: s, nameMap: nameMap)),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              _SummaryCard(result: result),
+              const SizedBox(height: 16),
+              Text('Speakers', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              ...result.speakers
+                  .map((s) => _SpeakerCard(speaker: s, nameMap: nameMap)),
+            ],
+          ),
+        ),
+        _ShareBar(
+          onShare: () => SharePlus.instance.share(
+            ShareParams(
+              text: _metricsText(),
+              subject: 'Speaker metrics — ${result.filename}',
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -814,6 +841,15 @@ class _ChatTabState extends State<_ChatTab> {
     });
   }
 
+  String _shareText() {
+    final buf = StringBuffer('Q&A\n\n');
+    for (final msg in _vm.messages) {
+      final role = msg.role == 'user' ? 'Q' : 'A';
+      buf.writeln('$role: ${msg.text.trim()}\n');
+    }
+    return buf.toString().trim();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -910,6 +946,21 @@ class _ChatTabState extends State<_ChatTab> {
                       },
                     ),
             ),
+            if (_vm.messages.isNotEmpty)
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    icon: const Icon(Icons.share, size: 18),
+                    label: const Text('Share Q&A'),
+                    onPressed: () => SharePlus.instance.share(
+                      ShareParams(text: _shareText(), subject: 'Q&A'),
+                    ),
+                  ),
+                ),
+              ),
             const Divider(height: 1),
             Padding(
               padding: EdgeInsets.fromLTRB(

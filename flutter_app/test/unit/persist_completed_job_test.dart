@@ -11,6 +11,8 @@ import 'package:look_whos_talking/services/sync_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _RecordingCloud implements CloudStorageProvider {
+  @override
+  String get displayName => 'Recording Cloud';
   _RecordingCloud({this.authenticated = false, this.throwOnAuthCheck = false});
   bool authenticated;
   bool throwOnAuthCheck;
@@ -226,10 +228,13 @@ void main() {
     test('save failure is swallowed and the cloud is never touched',
         () async {
       final cloud = _RecordingCloud(authenticated: true);
-      // Nonexistent parent directory → openDatabase throws → save fails.
+      // A database path whose parent is a regular file makes every open/query
+      // throw deterministically — the save must fail, silently.
+      final blocker = File('${tempDir.path}/not-a-dir');
+      await blocker.writeAsBytes([1]);
       final broken = ConversationStore(
         factory: databaseFactoryFfi,
-        dbPath: '${tempDir.path}/no/such/dir/x.db',
+        dbPath: '${blocker.path}/x.db',
       );
       await expectLater(
         persistCompletedJob(

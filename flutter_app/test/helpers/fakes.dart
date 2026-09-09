@@ -9,11 +9,25 @@ import 'package:look_whos_talking/services/conversation_store.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class FakeCloud implements CloudStorageProvider {
-  FakeCloud({this.authenticated = false});
+  FakeCloud({
+    this.authenticated = false,
+    this.displayName = 'Fake Cloud',
+    this.authError,
+  });
   bool authenticated;
+  @override
+  final String displayName;
+
+  /// When set, authenticate() throws it — lets tests exercise the error paths.
+  Object? authError;
 
   @override
-  Future<void> authenticate() async => authenticated = true;
+  Future<void> authenticate() async {
+    final error = authError;
+    if (error != null) throw error;
+    authenticated = true;
+  }
+
   @override
   Future<bool> isAuthenticated() async => authenticated;
   @override

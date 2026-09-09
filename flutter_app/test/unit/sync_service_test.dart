@@ -11,6 +11,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// In-memory cloud: a map of remotePath → bytes plus an app folder.
 class FakeCloud implements CloudStorageProvider {
+  @override
+  String get displayName => 'Sync Cloud';
   final Map<String, List<int>> files = {};
   bool authenticated = false;
   bool failNextUpload = false;

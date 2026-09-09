@@ -86,6 +86,9 @@ class GoogleDriveProvider implements CloudStorageProvider {
   String? appFolderId;
 
   @override
+  String get displayName => 'Google Drive';
+
+  @override
   Future<void> authenticate() => auth.authenticate();
 
   @override

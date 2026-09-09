@@ -12,6 +12,8 @@ import 'package:look_whos_talking/view_models/history_view_model.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class _FakeCloud implements CloudStorageProvider {
+  @override
+  String get displayName => 'VM Cloud';
   bool authenticated = true;
 
   @override

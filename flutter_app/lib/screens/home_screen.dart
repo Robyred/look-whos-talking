@@ -8,6 +8,7 @@ import '../services/sync_service.dart';
 import '../view_models/history_view_model.dart';
 import 'history_screen.dart';
 import 'record_screen.dart';
+import 'settings_screen.dart';
 import 'upload_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -17,7 +18,15 @@ class HomeScreen extends StatefulWidget {
   /// Shared cloud backend — same instance used by ProcessingScreen and History.
   final CloudStorageProvider cloud;
 
-  const HomeScreen({super.key, required this.store, required this.cloud});
+  /// All connectable providers, shown on the Settings screen.
+  final List<CloudStorageProvider> cloudProviders;
+
+  const HomeScreen({
+    super.key,
+    required this.store,
+    required this.cloud,
+    this.cloudProviders = const [],
+  });
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -122,6 +131,16 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SettingsScreen(providers: widget.cloudProviders),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.history),
             tooltip: 'History',
