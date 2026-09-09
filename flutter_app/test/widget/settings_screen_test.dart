@@ -23,6 +23,29 @@ void main() {
 
   Finder row(String displayName) => find.widgetWithText(ListTile, displayName);
 
+  testWidgets('provider rows render under the app full-width button theme',
+      (tester) async {
+    // The app theme gives FilledButtons an infinite min-width
+    // (Size.fromHeight(52)); a trailing Connect button must not overflow the
+    // ListTile (regression test for the blank-settings-screen bug).
+    final theme = ThemeData(
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+      ),
+    );
+    await tester.pumpWidget(MaterialApp(
+      theme: theme,
+      home: SettingsScreen(providers: threeProviders()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Connect'), findsNWidgets(3));
+    expect(find.text('OneDrive'), findsOneWidget);
+  });
+
   testWidgets('renders one row per provider, all not connected',
       (tester) async {
     await tester.pumpWidget(screen(threeProviders()));

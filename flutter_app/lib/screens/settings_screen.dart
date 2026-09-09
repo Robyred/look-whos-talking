@@ -164,6 +164,12 @@ class _ProviderRow extends StatelessWidget {
               ],
             )
           : FilledButton(
+              // The app theme makes FilledButtons full-width; inside a
+              // ListTile trailing that would overflow, so cap the size here.
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(96, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
               onPressed: loading ? null : onConnect,
               child: const Text('Connect'),
             ),

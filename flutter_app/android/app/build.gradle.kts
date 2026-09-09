@@ -27,6 +27,11 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // flutter_appauth registers an OAuth redirect receiver whose scheme
+        // comes from this placeholder. This app's OneDrive redirect uses the
+        // 'lookwhostalking' scheme (the Dropbox 'db-...' scheme is declared
+        // directly in the main manifest).
+        manifestPlaceholders["appAuthRedirectScheme"] = "lookwhostalking"
     }
 
     buildTypes {

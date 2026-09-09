@@ -38,7 +38,7 @@ flutter_app/test/helpers/fakes.dart + 4 test doubles   # displayName on every Cl
 
 ## Interpretation decisions & deviations from the spec (not bugs)
 
-1. **`flutter_secure_storage` version:** spec says `^9.0.0`; that cannot resolve — `flutter_secure_storage_windows` 3.x needs win32 ^5 which conflicts with `share_plus` ^13 (win32 ^6). Pub's own suggestion (`^11.0.0`) was used — the same version the earlier Phase-1 spec had. API used is identical.
+1. **`flutter_secure_storage` version:** spec says `^9.0.0`; that cannot resolve — `flutter_secure_storage_windows` 3.x needs win32 ^5 which conflicts with `share_plus` ^13 (win32 ^6). Pub's own suggestion (`^11.0.0`) was used — the same version the earlier Phase-1 spec had. **Final change:** the Android build with `^11.0.0` failed because 11.x hard-codes `compileSdk = 37` while the project compiles at SDK 36 (AGP 9.1.0's recommended max). Pinned to **`^10.0.0` → resolved 10.3.1** (`compileSdk = 36`, `minSdk 23`, Windows impl 4.2.2 — no win32 conflict). API used is identical across these.
 2. **Testability seams (new `oauth2.dart`):** the spec sketch hard-wires `FlutterAppAuth`, `FlutterSecureStorage` and top-level `http` calls, which cannot run headless. Following the GoogleDriveProvider precedent (DriveGateway/AuthGateway), each provider now accepts injectable `http.Client`, a `TokenStore` seam (real impl `SecureTokenStore` over flutter_secure_storage) and a `TokenBroker` seam (real impl `FlutterAppAuthBroker` over flutter_appauth, mapping the typed user-cancelled exception to `AuthException` so the UI treats cancel as quiet). Behaviour is unchanged; the logic is unit-testable.
 3. **No constructor access-token injection:** tests reach authenticated state through the real silent-refresh path (stored refresh token + broker), so no test-only token plumbing exists in the providers.
 4. **Settings row subtitle:** the interface has no account-email API, so rows show "Connected"/"Not connected" only. Spec's "account email if available" needs an interface addition (or per-provider extension) — deferred rather than inventing a half-interface.
@@ -100,5 +100,48 @@ Claude reviewed the credential/scheme changes (`specs/Phase_1_Settings_Share_add
 
 Minor note from Claude (non-blocking, no change yet): `lookwhostalking://auth` is a short generic custom scheme and could theoretically be hijacked by another app registering the same scheme. Reverse-DNS (e.g. `com.lookwhostalking://auth`) is more collision-resistant but requires an Azure redirect-URI update. Deferred — worth doing before a public release; Jack's decision.
 
+### Android build fixes (device testing, 8 Sep 2026)
+
+Two errors surfaced when Jack ran `flutter run` to build the APK on his phone; both fixed.
+
+1. **`flutter_secure_storage` 11.0.0 requires compileSdk 37.**
+   `flutter run` failed with: *"Dependency ':flutter_secure_storage' requires … compile against version 37 … :app is currently compiled against android-36 … maximum recommended compile SDK version for AGP 9.1.0 is 36."*
+   Cause: 11.0.0 hard-codes `compileSdk = 37` in its Android plugin; the project compiles at SDK 36 (AGP 9.1.0's recommended max).
+   Fix: pin `flutter_secure_storage` to **`^10.0.0` → resolves 10.3.1** (`compileSdk = 36`, `minSdk 23`, Windows impl 4.2.2 — no win32 conflict with `share_plus`). API used is identical. Re-ran the gate: analyze no issues, 199/199 tests green.
+
+2. **flutter_appauth manifest placeholder `appAuthRedirectScheme` unset.**
+   `flutter run` failed during `:app:processDebugMainManifest` with: *"Attribute data@scheme at AndroidManifest.xml requires a placeholder substitution but no value for <appAuthRedirectScheme> is provided."*
+   Cause: `flutter_appauth` registers its OAuth redirect receiver against a Gradle manifest placeholder named `appAuthRedirectScheme`; no value was ever set, so the manifest merger failed. (The source of the `${appAuthRedirectScheme}` reference could not be found in the committed tree — it appears only at merge time; the placeholder value is required regardless.)
+   Fix: in `android/app/build.gradle.kts`, inside `defaultConfig`, added:
+   ```kotlin
+   manifestPlaceholders["appAuthRedirectScheme"] = "lookwhostalking"
+   ```
+   The Dropbox `db-…` scheme is declared directly in the main manifest and is unaffected.
+   Status: **verification pending** — the agent sandbox cannot run the Gradle build (it needs to write to `~/.gradle` outside the workspace), so Jack is re-running `flutter run` to confirm.
+
+3. **flutter_appauth 8.0.3 plugin compiles against Android SDK 31 (AAR metadata failure).**
+   After fix #2, the build progressed further then failed at `:flutter_appauth:checkDebugAarMetadata` with ~20 issues, all of the form *"Dependency 'androidx.<…>' requires … compile against version 33/34 or later … :flutter_appauth is currently compiled against android-31."*
+   Cause: the spec's `flutter_appauth: ^8.0.0` constraint resolved to **8.0.3**, an old plugin whose own `build.gradle` sets `compileSdkVersion 31`, while Gradle resolved its transitive AndroidX deps (fragment 1.7.1, lifecycle 2.7.0, activity 1.8.1, …) up to SDK 34 — so the library module cannot check its AAR metadata.
+   Fix: upgrade to **`flutter_appauth: ^12.0.0` → resolves 12.1.0** (`compileSdkVersion 35`, `minSdk 24`, still `net.openid:appauth:0.11.1`). The Dart API used here (`const FlutterAppAuth()`, `authorizeAndExchangeCode`, `token`, `FlutterAppAuthUserCancelledException`) is unchanged in 12.x. Re-ran the gate: analyze no issues, 199/199 tests green.
+   Status: **verified** — build succeeded on Jack's device after these fixes. Working dependency set for the current SDK/AGP: `flutter_appauth` 12.1.0 and `flutter_secure_storage` 10.3.1.
+
+4. **Settings screen renders blank (ListTile trailing overflow).**
+   On device, opening Settings crashed the layout: *"Trailing widget consumes the entire tile width … ListTile … settings_screen.dart:138."* Cause: the app theme sets `FilledButton.minimumSize` to `Size.fromHeight(52)` (i.e. infinite width). The not-connected row's `Connect` `FilledButton` sits in `ListTile.trailing`, so it expanded to the full tile width and overflowed. Fix: give that button a bounded style in `_ProviderRow` (`FilledButton.styleFrom(minimumSize: Size(96, 40), …)`). Added a regression widget test that renders SettingsScreen under the app's full-width-button theme (would previously throw). Gate re-run: analyze no issues, **200/200 tests green**.
+
+### On-device OAuth testing — first results + fixes (8 Sep 2026)
+Jack built and ran on a phone. Settings now renders; connecting each provider surfaced one issue each:
+1. **Google Drive — `GoogleSignInException(clientConfigurationError, serverClientId must be provided on Android, null)`.** `google_sign_in` 7.x on Android requires a `serverClientId` (the Client ID of a Google Cloud *Web application* OAuth client) to request the Drive scope; none was configured. Fix (code): added a `_googleServerClientId` constant in `google_drive_services.dart` (placeholder `YOUR_GOOGLE_WEB_CLIENT_ID`) and passed it to `GoogleSignIn.instance.initialize(serverClientId: …)`. **Open:** Jack must create the Google Cloud "Web application" OAuth client for this app and replace the constant (registration step, like Azure/Dropbox). Not re-verified on device yet.
+2. **Dropbox — white screen with *"302 The resource was found at db-ypxmmh1ye0mzpby://2/token?code=…&state=…; you should be redirected automatically".*** OAuth completed but the custom-scheme redirect was not handed back to the app. Cause: the `RedirectUriReceiverActivity` intent-filters declared only `android:scheme`; AppAuth matching needs scheme **+ host** (+ path) to capture `db-…://2/token`. Fix (code): added `android:host="2"` + `android:pathPrefix="/token"` to the Dropbox filter and `android:host="auth"` to the OneDrive filter in `AndroidManifest.xml`. **Not re-verified on device yet.**
+3. **OneDrive — flow started but could not restart cleanly; generic Microsoft "Cannot Complete Request".** Likely a transient/state issue (the previous flow was still open when Connect was re-tapped), not a code bug yet. **Open:** retest after the manifest fix; if it recurs, we'll investigate stale in-progress sessions and Microsoft session state. (Settings already guards against double-taps via its `_loading` flag while the call is in flight.)
+
+Analyzer clean after these edits.
+
+### On-device OAuth testing — second round (8 Sep 2026): redirect hand-back fails for all providers
+Retest after the above fixes: **Google and OneDrive now get past account selection / MFA, then all three providers die at the same step** — the auth server returns a redirect to the custom scheme but the browser goes white instead of returning control to the app (Dropbox: "302 … you should be redirected automatically"; Microsoft: white screen, window "Object moved / login.microsoftonline.com"; Google: account chosen then `GoogleSignInException` ~error 28444).
+
+Root cause (shared): **`android:taskAffinity=""` on `.MainActivity`**. This is the `flutter_appauth` documented cause of "authorization flow does not return to the Flutter app after login even though the intent filter is correct." Because all three providers share the same hand-back mechanism, one fix covers them.
+Fix (code): removed `android:taskAffinity=""` from `MainActivity` in `AndroidManifest.xml`.
+Status: **verification pending** — Jack rebuilding to confirm all three now return cleanly.
+
 ### Remaining (unchanged)
-- Device-side verification is still required: the interactive Azure + Dropbox sign-ins, redirect hand-back through `RedirectUriReceiverActivity`, silent refresh, and real upload/download round-trips.
+- Device-side verification is still required for all three providers: interactive sign-ins, redirect hand-back through `RedirectUriReceiverActivity`, silent refresh, and real upload/download round-trips.

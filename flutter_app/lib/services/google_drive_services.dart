@@ -5,6 +5,13 @@ import 'package:http/http.dart' as http;
 import 'google_drive_gateway_impl.dart';
 import 'google_drive_provider.dart';
 
+// Replace with the Client ID of the Google Cloud "Web application" OAuth
+// client for this app. google_sign_in requires it on Android to request the
+// Drive scope (the plugin throws "serverClientId must be provided on Android"
+// when it is null).
+const _googleServerClientId = '1054824041438-qcikh0mkhrcib5r0dr627g1vo43n9u5h.apps.googleusercontent.com';
+
+
 /// Real [AuthGateway] over google_sign_in 7.x.
 ///
 /// Token persistence and refresh are handled by the platform's sign-in session
@@ -25,7 +32,9 @@ class GoogleDriveAuthImpl implements AuthGateway {
 
   static Future<void> _ensureInitialized() async {
     if (!_initialized) {
-      await GoogleSignIn.instance.initialize();
+      await GoogleSignIn.instance.initialize(
+        serverClientId: _googleServerClientId,
+      );
       _initialized = true;
     }
   }

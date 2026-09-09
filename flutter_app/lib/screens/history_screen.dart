@@ -106,15 +106,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> _syncAll() async {
     final summary = await _vm.syncAll();
     if (!mounted) return;
+    String message;
+    if (summary.failed == 0) {
+      message = 'Synced ${summary.succeeded} conversation(s)';
+    } else if (summary.errors.isNotEmpty) {
+      final first = summary.errors.first;
+      message = 'Synced ${summary.succeeded}, ${summary.failed} failed: '
+          '${first.length > 220 ? '${first.substring(0, 220)}…' : first}';
+    } else {
+      message = 'Synced ${summary.succeeded}, ${summary.failed} failed';
+    }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          summary.failed == 0
-              ? 'Synced ${summary.succeeded} conversation(s)'
-              : 'Synced ${summary.succeeded}, '
-                  '${summary.failed} failed',
-        ),
-      ),
+      SnackBar(content: Text(message)),
     );
   }
 
