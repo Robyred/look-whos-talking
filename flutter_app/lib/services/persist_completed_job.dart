@@ -7,10 +7,12 @@ import 'cloud_storage_provider.dart';
 import 'conversation_store.dart';
 import 'sync_service.dart';
 
-/// Persists one completed diarization job to the local [store] and — when a
-/// [cloud] provider is present and signed in — kicks off a background upload.
+/// Persists one completed diarization job to the local [store]. A cloud
+/// upload only happens after a save when [autoSync] is true (cloud sync is
+/// opt-in — the Settings "Auto-sync" switch defaults to off) and the provider
+/// is authenticated; otherwise the user syncs explicitly from History.
 ///
-/// Both steps are best-effort by design: a local save failure must never block
+/// All steps are best-effort by design: a local save failure must never block
 /// navigation to the results, and a cloud failure is recoverable later from
 /// the History screen, so this function never throws.
 Future<void> persistCompletedJob({
@@ -23,6 +25,7 @@ Future<void> persistCompletedJob({
   required String resultJson,
   String? audioPath,
   CloudStorageProvider? cloud,
+  bool autoSync = false,
   SyncService Function(ConversationStore store, CloudStorageProvider cloud)?
       syncServiceFactory,
 }) async {
@@ -43,6 +46,8 @@ Future<void> persistCompletedJob({
     debugPrint('persistCompletedJob: failed to save job $jobId: $e');
     return;
   }
+
+  if (!autoSync) return; // opt-in only
 
   final provider = cloud;
   if (provider == null) return;

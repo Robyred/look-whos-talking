@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/cloud_storage_provider.dart';
+import '../services/sync_settings.dart';
 
 /// Cloud-storage connections. Each provider in [providers] gets a row with
 /// Connect/Disconnect — sync through those providers is wired up later.
@@ -17,6 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // Auth state per provider instance, loaded in initState.
   final Map<CloudStorageProvider, bool> _authState = {};
   bool _loading = false;
+  bool _autoSync = false;
 
   @override
   void initState() {
@@ -25,6 +27,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _authState[provider] = false;
     }
     _refreshAuthStates();
+    _loadAutoSync();
+  }
+
+  Future<void> _loadAutoSync() async {
+    final value = await autoSyncEnabled();
+    if (mounted) setState(() => _autoSync = value);
+  }
+
+  Future<void> _setAutoSync(bool value) async {
+    setState(() => _autoSync = value);
+    await setAutoSyncEnabled(value);
   }
 
   // Best-effort initial read; an unavailable provider simply shows as
@@ -111,6 +124,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onConnect: () => _connect(provider),
               onDisconnect: () => _disconnect(provider),
             ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+            child: Text(
+              'Sync',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleSmall
+                  ?.copyWith(color: Colors.grey[600]),
+            ),
+          ),
+          SwitchListTile(
+            value: _autoSync,
+            onChanged: _setAutoSync,
+            secondary: const Icon(Icons.sync),
+            title: const Text('Auto-sync new conversations'),
+            subtitle: const Text(
+              'Upload new conversations to the cloud automatically. '
+              'Off by default — sync is manual from History.',
+            ),
+          ),
         ],
       ),
     );

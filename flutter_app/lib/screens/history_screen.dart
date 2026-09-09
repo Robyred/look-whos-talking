@@ -24,10 +24,11 @@ String _formatDuration(double sec) {
   return '${s}s';
 }
 
-/// History tab: past conversations with sync and audio-management actions.
-///
-/// The [HistoryViewModel] (and its store/sync/cloud dependencies) is injected
-/// so this screen stays fully testable; wiring lives at the call site.
+/// Which delete action the user chose from the dialog.
+enum _DeleteChoice { none, localOnly, localAndCloud }
+
+/// History screen: past conversations with sync, selection, and audio
+/// management. Cloud sync is explicit (auto-sync is opt-in elsewhere).
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key, required this.viewModel});
 
@@ -43,6 +44,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
   // True while a sync/restore is running — disables the action buttons so a
   // double tap can't start two overlapping runs (which could duplicate uploads).
   bool _busy = false;
+
+  // Multi-select state for "sync selected".
+  bool _selecting = false;
+  final Set<String> _selectedIds = {};
 
   @override
   void initState() {
@@ -62,7 +67,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
     if (mounted) setState(() {});
   }
 
+  void _enterSelection() => setState(() {
+        _selecting = true;
+        _selectedIds.clear();
+      });
+
+  void _exitSelection() => setState(() {
+        _selecting = false;
+        _selectedIds.clear();
+      });
+
+  void _toggleSelected(String id) {
+    setState(() {
+      if (!_selectedIds.remove(id)) _selectedIds.add(id);
+    });
+  }
+
   Future<void> _openRecord(ConversationRecord record) async {
+    if (_selecting) {
+      _toggleSelected(record.id);
+      return;
+    }
     final result = _vm.parseResult(record);
     if (result == null || !mounted) return;
     // Pass the stored audio through so recordings keep their Playback tab.
@@ -83,51 +108,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Future<bool> _confirmDelete(ConversationRecord record) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete conversation?'),
-        content: Text(
-          '"${record.filename}" and its audio file will be permanently deleted.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    return confirmed ?? false;
-  }
-
-  Future<void> _deleteAudioOnly(ConversationRecord record) async {
-    await _vm.deleteAudio(record.id);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Audio deleted — transcript kept for '
-              '"${record.filename}"'),
-        ),
-      );
-    }
-  }
-
-  Future<void> _syncAll() async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    SyncSummary summary;
-    try {
-      summary = await _vm.syncAll();
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-    if (!mounted) return;
+  Future<void> _showSyncResult(SyncSummary summary) async {
     for (final error in summary.errors) {
       debugPrint('sync failure: $error');
     }
@@ -144,6 +125,47 @@ class _HistoryScreenState extends State<HistoryScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
+  }
+
+  Future<void> _syncAll() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    SyncSummary summary;
+    try {
+      summary = await _vm.syncAll();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (!mounted) return;
+    await _showSyncResult(summary);
+  }
+
+  Future<void> _syncSelected() async {
+    final ids = _selectedIds.toList();
+    if (_busy || ids.isEmpty) return;
+    setState(() => _busy = true);
+    SyncSummary summary;
+    try {
+      summary = await _vm.syncSelected(ids);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (mounted) _exitSelection();
+    if (!mounted) return;
+    await _showSyncResult(summary);
+  }
+
+  Future<void> _syncOne(ConversationRecord record) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    SyncSummary summary;
+    try {
+      summary = await _vm.syncSelected([record.id]);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (!mounted) return;
+    await _showSyncResult(summary);
   }
 
   Future<void> _restore() async {
@@ -167,10 +189,104 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  Future<void> _deleteAudioOnly(ConversationRecord record) async {
+    await _vm.deleteAudio(record.id);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Audio deleted — transcript kept for '
+              '"${record.filename}"'),
+        ),
+      );
+    }
+  }
+
+  Future<_DeleteChoice> _showDeleteDialog(ConversationRecord record) {
+    final synced = record.isSynced;
+    return showDialog<_DeleteChoice>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete conversation?'),
+        content: Text(
+          synced
+              ? '"${record.filename}" will be deleted locally and, if you '
+                  'choose, removed from cloud storage.'
+              : '"${record.filename}" and its audio file will be '
+                  'permanently deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(_DeleteChoice.none),
+            child: const Text('Cancel'),
+          ),
+          if (synced)
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(_DeleteChoice.localOnly),
+              child: const Text('Delete (local)'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(
+                synced ? _DeleteChoice.localAndCloud : _DeleteChoice.localOnly),
+            child: Text(synced ? 'Delete & remove from cloud' : 'Delete'),
+          ),
+        ],
+      ),
+    ).then((c) => c ?? _DeleteChoice.none);
+  }
+
+  // Swipe-to-delete stays local-only (quick action); cloud removal is offered
+  // from the row menu's "Delete conversation".
+  Future<bool> _confirmSwipeDelete(ConversationRecord record) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete conversation?'),
+        content: Text(
+          '"${record.filename}" and its audio file will be permanently '
+          'deleted from this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> _deleteWithConfirm(ConversationRecord record) async {
+    if (!mounted) return;
+    final choice = await _showDeleteDialog(record);
+    if (choice == _DeleteChoice.none || !mounted) return;
+    await _vm.deleteConversation(
+      record,
+      alsoCloud: choice == _DeleteChoice.localAndCloud,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('History')),
+      appBar: AppBar(
+        title: Text(
+          _selecting ? '${_selectedIds.length} selected' : 'History',
+        ),
+        actions: [
+          if (_vm.records.isNotEmpty)
+            TextButton(
+              onPressed: _selecting ? _exitSelection : _enterSelection,
+              child: Text(_selecting ? 'Done' : 'Select'),
+            ),
+          const SizedBox(width: 8),
+        ],
+      ),
       body: SafeArea(
         top: false,
         child: Column(
@@ -185,32 +301,48 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildActionBar(BuildContext context) {
-    final showSync = _vm.cloudAuthenticated && _vm.hasUnsynced;
-    final showRestore = _vm.cloudAuthenticated;
-    if (!showSync && !showRestore) return const SizedBox.shrink();
+    final authed = _vm.cloudAuthenticated;
+    if (_selecting) {
+      final count = _selectedIds.length;
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: _busy || count == 0 || !authed
+                    ? null
+                    : _syncSelected,
+                icon: const Icon(Icons.cloud_upload),
+                label: Text('Sync selected ($count)'),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final showSync = authed;
+    if (!showSync) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Row(
         children: [
-          if (showSync) ...[
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: _busy ? null : _syncAll,
-                icon: const Icon(Icons.cloud_upload),
-                label: const Text('Sync all'),
-              ),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _busy ? null : _syncAll,
+              icon: const Icon(Icons.cloud_upload),
+              label: const Text('Sync all'),
             ),
-            const SizedBox(width: 12),
-          ],
-          if (showRestore)
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _busy ? null : _restore,
-                icon: const Icon(Icons.cloud_download),
-                label: const Text('Restore from cloud'),
-              ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _busy ? null : _restore,
+              icon: const Icon(Icons.cloud_download),
+              label: const Text('Restore from cloud'),
             ),
+          ),
         ],
       ),
     );
@@ -261,11 +393,53 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildRow(BuildContext context, ConversationRecord record) {
     final hasAudio = record.audioPath != null;
+    final selected = _selecting && _selectedIds.contains(record.id);
 
+    final tile = ListTile(
+      onTap: () => _openRecord(record),
+      onLongPress: _selecting ? null : () => _showRowMenu(record),
+      leading: _selecting
+          ? Checkbox(
+              value: selected,
+              onChanged: (_) => _toggleSelected(record.id),
+            )
+          : null,
+      title: Text(
+        record.filename,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        '${_formatDate(record.createdAt)} · '
+        '${_formatDuration(record.durationSec)} · '
+        '${record.speakerCount} speaker${record.speakerCount == 1 ? '' : 's'}',
+      ),
+      selected: selected,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            record.isSynced ? Icons.cloud_done : Icons.cloud_upload,
+            size: 18,
+            color: record.isSynced ? Colors.green.shade600 : Colors.grey.shade500,
+          ),
+          const SizedBox(width: 10),
+          Icon(
+            hasAudio ? Icons.graphic_eq : Icons.music_off,
+            size: 18,
+            color: hasAudio ? Colors.indigo : Colors.grey.shade400,
+          ),
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right, color: Colors.grey),
+        ],
+      ),
+    );
+
+    if (_selecting) return tile;
     return Dismissible(
       key: ValueKey('history-${record.id}'),
       direction: DismissDirection.endToStart,
-      confirmDismiss: (_) => _confirmDelete(record),
+      confirmDismiss: (_) => _confirmSwipeDelete(record),
       onDismissed: (_) => _vm.delete(record.id),
       background: Container(
         color: Colors.red,
@@ -273,44 +447,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
         padding: const EdgeInsets.only(right: 24),
         child: const Icon(Icons.delete, color: Colors.white),
       ),
-      child: ListTile(
-        onTap: () => _openRecord(record),
-        onLongPress: () => _showRowMenu(record),
-        title: Text(
-          record.filename,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        subtitle: Text(
-          '${_formatDate(record.createdAt)} · '
-          '${_formatDuration(record.durationSec)} · '
-          '${record.speakerCount} speaker${record.speakerCount == 1 ? '' : 's'}',
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              record.isSynced ? Icons.cloud_done : Icons.cloud_upload,
-              size: 18,
-              color: record.isSynced
-                  ? Colors.green.shade600
-                  : Colors.grey.shade500,
-            ),
-            const SizedBox(width: 10),
-            Icon(
-              hasAudio ? Icons.graphic_eq : Icons.music_off,
-              size: 18,
-              color: hasAudio ? Colors.indigo : Colors.grey.shade400,
-            ),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right, color: Colors.grey),
-          ],
-        ),
-      ),
+      child: tile,
     );
   }
 
   void _showRowMenu(ConversationRecord record) {
+    final authed = _vm.cloudAuthenticated;
     showModalBottomSheet<void>(
       context: context,
       builder: (ctx) => SafeArea(
@@ -328,6 +470,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
             const Divider(height: 1),
             ListTile(
+              enabled: authed && !_busy,
+              leading: const Icon(Icons.cloud_upload),
+              title: const Text('Sync to cloud'),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _syncOne(record);
+              },
+            ),
+            ListTile(
               enabled: record.audioPath != null,
               leading: const Icon(Icons.delete_outline),
               title: const Text('Delete audio only'),
@@ -341,7 +492,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ListTile(
               leading: const Icon(Icons.delete_forever),
               title: const Text('Delete conversation'),
-              subtitle: const Text('Removes the record and audio'),
+              subtitle: const Text('Local, with optional cloud removal'),
               onTap: () {
                 Navigator.of(ctx).pop();
                 _deleteWithConfirm(record);
@@ -351,31 +502,5 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _deleteWithConfirm(ConversationRecord record) async {
-    if (!mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete conversation?'),
-        content: Text(
-          '"${record.filename}" and its audio file will be permanently deleted.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true && mounted) {
-      await _vm.delete(record.id);
-    }
   }
 }

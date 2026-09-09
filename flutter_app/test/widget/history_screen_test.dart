@@ -202,12 +202,12 @@ void main() {
     expect(find.text('Restore from cloud'), findsNothing);
   });
 
-  testWidgets('hides Sync all when everything is already synced',
-      (tester) async {
+  testWidgets('shows Sync all even when everything is already synced '
+      '(re-sync available)', (tester) async {
     await store.save(rec('a', isSynced: true));
     await pumpHistory(tester, cloud: _Cloud(authenticated: true));
 
-    expect(find.text('Sync all'), findsNothing);
+    expect(find.text('Sync all'), findsOneWidget);
     expect(find.text('Restore from cloud'), findsOneWidget);
   });
 
@@ -267,5 +267,38 @@ void main() {
     // Row still present, now without the audio icon.
     expect(find.text('Team call a'), findsOneWidget);
     expect(find.byIcon(Icons.music_off), findsOneWidget);
+  });
+
+  testWidgets('select mode shows checkboxes and a live selected count',
+      (tester) async {
+    await store.save(rec('a'));
+    await store.save(rec('b'));
+    await pumpHistory(tester, cloud: _Cloud(authenticated: true));
+
+    await tester.tap(find.text('Select'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Checkbox), findsNWidgets(2));
+    expect(find.text('0 selected'), findsOneWidget);
+    expect(find.text('Done'), findsOneWidget);
+
+    await tester.tap(find.text('Team call a'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 selected'), findsOneWidget);
+    expect(find.text('Sync selected (1)'), findsOneWidget);
+  });
+
+  testWidgets('long-press delete offers remove-from-cloud for a synced row',
+      (tester) async {
+    await store.save(rec('a', isSynced: true));
+    await pumpHistory(tester, cloud: _Cloud(authenticated: true));
+
+    await tester.longPress(find.text('Team call a'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete conversation'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Delete & remove from cloud'), findsOneWidget);
+    expect(find.text('Delete (local)'), findsOneWidget);
   });
 }

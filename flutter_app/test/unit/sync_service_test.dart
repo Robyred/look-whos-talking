@@ -223,7 +223,7 @@ void main() {
   });
 
   group('syncAll', () {
-    test('syncs only unsynced conversations', () async {
+    test('syncs every conversation, synced or not (overwrite)', () async {
       cloud.authenticated = true;
       await store.save(record(id: 'job_1', isSynced: true));
       await store.save(record(id: 'job_2'));
@@ -231,18 +231,18 @@ void main() {
 
       final summary = await service.syncAll();
 
-      expect(summary.succeeded, 2);
+      expect(summary.succeeded, 3);
       expect(summary.failed, 0);
-      expect(cloud.files.containsKey('conversations/job_1/result.json'), isFalse);
+      expect(cloud.files.containsKey('conversations/job_1/result.json'), isTrue);
       expect(cloud.files.containsKey('conversations/job_2/result.json'), isTrue);
       expect(cloud.files.containsKey('conversations/job_3/result.json'), isTrue);
     });
 
-    test('returns zero summary when everything is already synced', () async {
+    test('is safe to run when everything is already synced', () async {
       cloud.authenticated = true;
       await store.save(record(id: 'job_1', isSynced: true));
       final summary = await service.syncAll();
-      expect(summary.succeeded, 0);
+      expect(summary.succeeded, 1);
       expect(summary.failed, 0);
       expect(summary.errors, isEmpty);
     });
@@ -268,6 +268,57 @@ void main() {
     test('throws AuthException up front when not authenticated', () async {
       await store.save(record(id: 'job_1'));
       await expectLater(service.syncAll(), throwsA(isA<AuthException>()));
+    });
+  });
+
+  group('syncByIds', () {
+    test('syncs only the given ids', () async {
+      cloud.authenticated = true;
+      await store.save(record(id: 'a', isSynced: true));
+      await store.save(record(id: 'b'));
+      await store.save(record(id: 'c'));
+
+      final summary = await service.syncByIds(['a', 'c']);
+
+      expect(summary.succeeded, 2);
+      expect(cloud.files.containsKey('conversations/a/result.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/c/result.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/b/result.json'), isFalse);
+    });
+
+    test('throws AuthException up front when not authenticated', () async {
+      await store.save(record(id: 'a'));
+      await expectLater(
+        service.syncByIds(['a']),
+        throwsA(isA<AuthException>()),
+      );
+    });
+  });
+
+  group('deleteConversationFromCloud', () {
+    test('removes result.json, manifest.json and audio.aac', () async {
+      cloud.authenticated = true;
+      final audioPath = await writeAudio('clip.aac');
+      await store.save(record(id: 'job_1', audioPath: audioPath));
+      await service.syncConversation('job_1');
+      expect(
+        cloud.files.keys.where((k) => k.startsWith('conversations/job_1/')),
+        hasLength(3),
+      );
+
+      await service.deleteConversationFromCloud('job_1');
+
+      expect(
+        cloud.files.keys.where((k) => k.startsWith('conversations/job_1/')),
+        isEmpty,
+      );
+    });
+
+    test('throws AuthException when not authenticated', () async {
+      await expectLater(
+        service.deleteConversationFromCloud('job_1'),
+        throwsA(isA<AuthException>()),
+      );
     });
   });
 

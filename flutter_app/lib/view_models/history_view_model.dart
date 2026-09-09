@@ -94,13 +94,38 @@ class HistoryViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Uploads every unsynced conversation. Refreshes the list afterwards so the
+  /// Uploads every conversation. Refreshes the list afterwards so the
   /// sync-status icons reflect the outcome.
   Future<SyncSummary> syncAll() async {
     final summary = await syncService.syncAll();
     lastSyncSummary = summary;
     await load();
     return summary;
+  }
+
+  /// Uploads exactly [ids] (overwrite). Refreshes the list afterwards.
+  Future<SyncSummary> syncSelected(List<String> ids) async {
+    final summary = await syncService.syncByIds(ids);
+    lastSyncSummary = summary;
+    await load();
+    return summary;
+  }
+
+  /// Deletes [record] locally (record + local audio). When [alsoCloud] is set,
+  /// first removes the conversation's remote copy (best-effort — a cloud
+  /// delete failure never blocks the local delete).
+  Future<void> deleteConversation(
+    ConversationRecord record, {
+    required bool alsoCloud,
+  }) async {
+    if (alsoCloud) {
+      try {
+        await syncService.deleteConversationFromCloud(record.id);
+      } catch (_) {
+        // Best effort; local delete proceeds regardless.
+      }
+    }
+    await delete(record.id);
   }
 
   /// Lists the remote index and downloads any conversation not already

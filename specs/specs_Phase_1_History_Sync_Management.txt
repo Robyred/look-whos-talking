@@ -1,0 +1,91 @@
+BEGIN SPEC DOCUMENT
+
+Look Who's Talking — Phase 1: History & Sync Management
+Purpose: Rework how conversations are synced and deleted so cloud use is an explicit, user-chosen action rather than silent default behaviour. Covers: opt-in sync, a always-available "Sync all", selective (per-conversation) sync, cloud-aware delete, and re-syncing after an external delete.
+
+Driving problem (from device testing): every finished job was auto-syncing on completion, so "Sync all" never appeared and users had no explicit control. Cloud sync should be opt-in.
+
+Prerequisite: Phase 1 storage/history + cloud providers (Google/OneDrive/Dropbox connect) are implemented and verified on-device.
+
+=== JACK REQUIREMENTS (must all appear; do not drop) ===
+1. Cloud sync is OPT-IN, not default. Auto-sync-on-completion is OFF by default.
+2. Syncing is an explicit manual action: a visible "Sync all", plus the ability to select which conversations to sync (multi-select).
+3. Deleting a conversation can also remove its cloud copy.
+4. A conversation whose remote copy was deleted externally can be re-synced (overwrite/recreate) without resetting local state to "unsynced".
+
+---
+
+1. Turn off auto-sync (opt-in default)
+File: flutter_app/lib/services/persist_completed_job.dart (+ call site in processing_screen.dart)
+
+Current: persistCompletedJob() fires a background SyncService.syncConversation after saving.
+Change:
+  - Remove the implicit background sync from persistCompletedJob() (or gate it behind an explicit flag that callers do not pass). A completed job is only saved locally.
+  - isSynced remains false after a normal save, so History can show it as unsynced.
+  - Optional (small): add an "Auto-sync new conversations" switch in the Settings screen (default OFF). When ON, the background sync is restored. This is the explicit opt-in surface.
+
+Integration note: the sync snapshot a conversation sees should not change — syncConversation(id) is still the single upload entry point (already protected against duplicate uploads by an in-flight guard).
+
+2. "Sync all" always available + syncs everything
+File: flutter_app/lib/view_models/history_view_model.dart, lib/services/sync_service.dart, lib/screens/history_screen.dart
+
+Current: the History action bar only shows "Sync all" when cloudAuthenticated && hasUnsynced, and syncAll() uploads only unsynced records.
+Change:
+  - syncAll() semantics: uploads EVERY conversation (result.json + manifest.json + optional audio) using overwrite, so it is safe to run repeatedly and after an external delete. Keep the per-conversation in-flight guard and the "failed vs succeeded" summary.
+  - Action bar: show "Sync all" whenever a cloud provider is authenticated (drop the hasUnsynced gate). After a run, rows still reflect their isSynced state via the sync icons.
+  - Keep "Restore from cloud" alongside; it already reports "Nothing new to restore" when there is nothing remote.
+
+3. Selective sync (multi-select)
+File: lib/screens/history_screen.dart, lib/view_models/history_view_model.dart
+
+Add a selection mode to the History list:
+  - Enter via a "Select" action (or long-press a row) that puts the list into multi-select; selected rows are visually highlighted with checkboxes.
+  - An action button "Sync selected (N)" uploads exactly those conversations (ids). Uses syncService.syncConversation per id (respecting the in-flight guard). Reports success/failure like Sync all.
+  - Selection clears on leaving the mode or after the sync completes.
+  - "Sync all" and "Sync selected" share the same underlying per-conversation upload; the only difference is the id list.
+
+4. Cloud-aware delete
+File: lib/screens/history_screen.dart, lib/view_models/history_view_model.dart, lib/services/sync_service.dart
+
+Current: deleting a row removes only the local record + local audio; a synced cloud copy is left behind and can resurface on Restore.
+Change:
+  - When a conversation is synced (isSynced true), the delete confirmation offers two choices:
+      a. "Delete" (local only) — removes the local record and local audio, leaves the cloud copy. (Explicit, so no surprise restore.)
+      b. "Delete & remove from cloud" — additionally deletes the remote files for that conversation.
+  - Removing from cloud: delete result.json, manifest.json, and audio.aac for conversations/<id>/ via the active provider (deleteFile is idempotent for missing files). Leave empty folders (Drive permits them) — note for Claude: folder-prune is out of scope for now.
+  - Unsynced conversations: delete confirmation stays as today (local only), no cloud option.
+  - Keep "Delete audio only" (long-press menu) unchanged.
+
+Which provider deletes the cloud copy: the active sync provider (today always Google, per main.dart wiring). If/when a conversation's copy lives on another provider, provider selection for sync/delete is out of scope in this pass (see notes).
+
+5. Re-sync after an external delete
+This falls out of changes 2 + 3: because syncConversation overwrites/creates remote files, running "Sync all" or "Sync selected" on an already-synced conversation whose remote was deleted externally simply recreates the remote copy — no need to reset isSynced. Add one explicit UI affordance so this is discoverable: a per-row "Sync" item in the long-press menu (or a re-sync icon) that calls syncConversation(id) directly, available on both synced and unsynced rows. (Optional but recommended.)
+
+6. Notes / open points for Claude
+- Provider choice for sync: sync continues through the single active provider (Google). Choosing a per-conversation or per-action provider is intentionally out of scope here.
+- OneDrive and Dropbox remain CONNECT-ONLY in this pass: their sync wiring is still out of scope (per the Settings & Share spec §9.5). Note also their remote-path shapes are provisional/flattened to the filename (flagged in Phase_1_Settings_Share_review_brief §46) — wiring SyncService against them is not a drop-in and is a future task.
+- Uploaded audio is now retained (a separate completed fix: uploads are copied into app documents before analysis), so uploads ALSO carry audio into History and into sync (audio.aac) — the delete/sync code must not assume audio exists only for mic recordings.
+- Empty cloud folders left after delete: acceptable for this pass.
+- Sync icons on rows: already exist (synced vs unsynced); keep consistent after manual actions.
+
+7. Files created / modified (expected)
+  flutter_app/lib/services/persist_completed_job.dart   # remove implicit auto-sync (opt-in)
+  flutter_app/lib/services/sync_service.dart            # syncAll() syncs everything (overwrite); add deleteConversationFromCloud(id)
+  flutter_app/lib/view_models/history_view_model.dart   # syncAll/syncSelected; deleteCloud option; selection state
+  flutter_app/lib/screens/history_screen.dart           # action bar always shows Sync all (when authed); multi-select mode; delete dialog cloud option; per-row re-sync
+  flutter_app/lib/screens/settings_screen.dart          # optional Auto-sync switch (default OFF)
+  flutter_app/lib/screens/processing_screen.dart        # stop auto-sync on completion (or pass explicit flag)
+  flutter_app/test/unit/persist_completed_job_test.dart # update: save no longer auto-syncs by default
+
+8. Testing guidance
+  - persistCompletedJob: save no longer triggers a background sync by default; isSynced stays false (update existing auto-sync assertions).
+  - syncService.syncAll: uploads every record (incl. already-synced); overwrites, never duplicates; summary counts correct.
+  - syncService.deleteConversationFromCloud: removes the three remote files; idempotent when files already absent.
+  - history view model: selecting N and syncing syncs exactly those; delete-with-cloud calls remote delete only when isSynced and chosen.
+  - history widget: "Sync all" visible whenever cloud authenticated (not gated on hasUnsynced); multi-select enter/exit and "Sync selected (N)"; delete dialog shows the cloud option for synced rows only. When no provider is authenticated, Sync actions are hidden (optionally with a hint to connect one in Settings).
+
+9. Commit shape
+  Single commit on phase1-storage:
+    feat(phase1): opt-in + selective cloud sync, always-available Sync all, cloud-aware delete
+
+END SPEC DOCUMENT

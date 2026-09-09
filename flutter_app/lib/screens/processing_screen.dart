@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import '../services/cloud_storage_provider.dart';
 import '../services/conversation_store.dart';
 import '../services/persist_completed_job.dart';
+import '../services/sync_settings.dart';
 import '../view_models/processing_view_model.dart';
 import '../widgets/speaker_picker.dart';
 import 'name_review_screen.dart';
@@ -74,6 +75,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
     await persistCompletedJob(
       store: widget.store,
       cloud: widget.cloud,
+      autoSync: await autoSyncEnabled(),
       jobId: status.jobId,
       filename: widget.sourceFilename ?? recordingDisplayName(DateTime.now()),
       createdAt: DateTime.now(),

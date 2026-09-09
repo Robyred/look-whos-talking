@@ -103,26 +103,44 @@ class SyncService {
 
   /// Uploads every unsynced conversation. Never aborts on an individual
   /// failure — each error is collected in [SyncSummary.errors].
+  /// Uploads EVERY conversation (overwrite/create), synced or not. Safe to
+  /// run repeatedly and after an external delete. Never aborts on an
+  /// individual failure — each error is collected in [SyncSummary.errors].
   Future<SyncSummary> syncAll() async {
+    final records = await store.list();
+    return syncByIds(records.map((r) => r.id).toList());
+  }
+
+  /// Uploads exactly the given conversation ids (overwrite/create). Used by
+  /// the History "Sync selected" action.
+  Future<SyncSummary> syncByIds(List<String> ids) async {
     if (!await provider.isAuthenticated()) {
       throw const AuthException('Not authenticated');
     }
-    final records = await store.list();
-    final unsynced = records.where((r) => !r.isSynced).toList();
-
     var succeeded = 0;
     var failed = 0;
     final errors = <String>[];
-    for (final record in unsynced) {
+    for (final id in ids) {
       try {
-        await syncConversation(record.id);
+        await syncConversation(id);
         succeeded++;
       } catch (e) {
         failed++;
-        errors.add('${record.id}: $e');
+        errors.add('$id: $e');
       }
     }
     return SyncSummary(succeeded: succeeded, failed: failed, errors: errors);
+  }
+
+  /// Deletes a conversation's remote files (result.json, manifest.json and,
+  /// when present, audio.aac). Idempotent — missing files are not an error.
+  Future<void> deleteConversationFromCloud(String id) async {
+    if (!await provider.isAuthenticated()) {
+      throw const AuthException('Not authenticated');
+    }
+    for (final name in [resultFileName, manifestFileName, audioFileName]) {
+      await provider.deleteFile(_remotePath(id, name));
+    }
   }
 
   /// Lists every conversation present in the remote app folder, reading each

@@ -141,6 +141,7 @@ void main() {
 
     Future<void> call({
       _RecordingCloud? cloud,
+      bool autoSync = false,
       SyncService Function(ConversationStore, CloudStorageProvider)?
           syncFactory,
       String resultJson = '{"speaker_count":2}',
@@ -156,6 +157,7 @@ void main() {
         resultJson: resultJson,
         audioPath: audioPath,
         cloud: cloud,
+        autoSync: autoSync,
         syncServiceFactory: syncFactory,
       );
     }
@@ -188,6 +190,16 @@ void main() {
       // No cloud passed — nothing to assert beyond completing without error.
     });
 
+    test('does not auto-sync unless autoSync is enabled (opt-in default)',
+        () async {
+      final cloud = _RecordingCloud(authenticated: true);
+      await call(cloud: cloud); // autoSync defaults to false
+      await Future<void>.delayed(Duration.zero);
+      expect(cloud.uploadedPaths, isEmpty);
+      final saved = await store.get('job_abc');
+      expect(saved, isNotNull);
+    });
+
     test('cloud not authenticated: record saved, no sync attempted', () async {
       final cloud = _RecordingCloud(authenticated: false);
       await call(cloud: cloud);
@@ -196,10 +208,11 @@ void main() {
       expect(saved, isNotNull);
     });
 
-    test('cloud authenticated: background sync is triggered', () async {
+    test('cloud authenticated + autoSync: background sync is triggered',
+        () async {
       final cloud = _RecordingCloud(authenticated: true);
       final sync = _RecordingSyncService(store: store, provider: cloud);
-      await call(cloud: cloud, syncFactory: (_, _) => sync);
+      await call(cloud: cloud, autoSync: true, syncFactory: (_, _) => sync);
       // Give the unawaited sync future a chance to run.
       await Future<void>.delayed(Duration.zero);
       expect(sync.synced, isTrue);
@@ -212,14 +225,14 @@ void main() {
         provider: cloud,
         throwOnSync: true,
       );
-      await call(cloud: cloud, syncFactory: (_, _) => sync);
+      await call(cloud: cloud, autoSync: true, syncFactory: (_, _) => sync);
       await Future<void>.delayed(Duration.zero);
       expect(sync.synced, isFalse); // threw before recording
     });
 
     test('auth-check failure is treated as not signed in', () async {
       final cloud = _RecordingCloud(throwOnAuthCheck: true);
-      await expectLater(call(cloud: cloud), completes);
+      await expectLater(call(cloud: cloud, autoSync: true), completes);
       expect(cloud.uploadedPaths, isEmpty);
       final saved = await store.get('job_abc');
       expect(saved, isNotNull);
@@ -246,6 +259,7 @@ void main() {
           speakerCount: 1,
           resultJson: '{}',
           cloud: cloud,
+          autoSync: true,
         ),
         completes,
       );
