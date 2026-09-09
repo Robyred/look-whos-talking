@@ -23,19 +23,24 @@ Supporting facts Claude should know:
 
 ## Current open problem — saving/sync
 
-**"Sync all" reports `Synced 0, 4 failed`** — 4 stored conversations all fail to sync. All failing together suggests a single systemic cause in the upload path (hypothesis: the Drive provider uses the `drive.file` scope but `GoogleDriveProvider` tries to manage a named **folder** under My Drive — find/list/create folder — which that scope may not permit, so every upload fails). **Not yet diagnosed** — the app previously showed only the failed *count*.
+**"Sync all" reports `Synced 0, 4 failed`** — 4 stored conversations all fail to sync. Two sequential causes were found and resolved:
+1. **Google Drive API disabled** → `DetailedAPIRequestError(status: 403, … not been used in project … or it is disabled …)`. Fixed (console): enabled **Google Drive API** (APIs & Services → Library). After enabling, the error changed to a 400.
+2. **Apostrophe in the app-folder name breaks Drive `q` queries** → `DetailedAPIRequestError(status: 400, … Invalid Value)`. The default Google app-folder name was **"Look Who's Talking"**; the gateway builds `q` as `name = '$name' …`, and a single quote can't be escaped inside a Drive name search — so every folder lookup returned 400. Fixed (code): renamed the GoogleDriveProvider default `appFolderName` to **"Look Whos Talking"** (no apostrophe). No existing folder to migrate (lookups failed before any create). Drive-provider unit tests updated for the new default name, plus a regression test asserting the default folder name contains no apostrophe. `flutter analyze` clean; full suite green.
+(For reference: OneDrive keeps "Look Who's Talking" as a Graph *path* folder — not a query — so it is unaffected.)
 
-Recent uncommitted change to help diagnose: `history_screen.dart` `_syncAll()` snackbar now shows the **first failure reason** (truncated to 220 chars) when any sync fails. Status: **pending a device re-run of "Sync all"** to capture the real error text and confirm/refute the scope hypothesis.
+Error-surfacing changes were added to `history_screen.dart` `_syncAll()` (first reason in the snackbar + full reasons logged to the console); these made both diagnoses possible and stay.
 
 ## Planned next (not started)
-1. Fix the "Sync all" failures (root cause above) so uploads actually succeed.
-2. Then add a **select-which-conversations-to-sync** feature (multi-select in History) — proposed as its own small spec + review brief.
+1. ~~Re-test "Sync all"~~ ✅ done — all 4 conversations now sync to Google Drive.
+2. Then add a **select-which-conversations-to-sync** feature (multi-select in History) — proposed as its own small spec + review brief. Note for that spec: sync currently always runs through the single Google provider regardless of which provider was most recently connected.
+3. **Jack requirement (must appear in that spec):** cloud sync should be **opt-in, not the default behaviour** — i.e. auto-sync-on-completion should be off by default, and syncing should be an explicit manual action ("Sync All" + the selective per-conversation control). This removes the current surprise where "Sync All" never appears because every job auto-syncs. If this is not in the drafted spec, Jack asked to be reminded.
 
 ## Verification status
-- **`flutter analyze`:** no issues. **`flutter test`:** 200/200 green (as of the last full run). On-device builds succeed.
+- **`flutter analyze`:** no issues. **`flutter test`:** 201/201 green (incl. the new apostrophe regression test). On-device builds succeed.
+- **On-device sync re-test:** after the two fixes, "Sync all" now completes — all four stored conversations synced to Google Drive (final message "Synced 4"). The "Sync all" action hides once nothing is unsynced (expected `hasUnsynced` behaviour); it reappears when a new unsynced conversation is saved.
 
 ## What Claude should do
 1. Confirm the provider-connection work above is sound and the current state is understood.
-2. Note the open "Sync all fails 0/4" item and the working hypothesis; weigh in on whether the `drive.file`-vs-My-Drive-folder mismatch is the likely cause and what the correct fix is (e.g. use the Drive **appDataFolder** scope/space, or create files app-owned at a permitted location) before we change code.
+2. Note the two resolved "Sync all fails 0/4" causes (Drive API disabled → console; apostrophe in folder name → code fix + regression test) and confirm the fix approach.
 3. Sanity-check the error-surfacing change and the plan to scope "select-which-to-sync" as a separate spec.
-4. **Outcome:** confirm current state / advise on the sync fix approach. Do not modify code without Jack's approval.
+4. **Outcome:** confirm current state. Do not modify code without Jack's approval.

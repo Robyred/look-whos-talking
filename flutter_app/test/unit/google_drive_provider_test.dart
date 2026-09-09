@@ -207,7 +207,7 @@ void main() {
       await provider.upload(path, 'conversations/job_1/audio.aac');
 
       final appFolder = gateway._findChild(
-        "Look Who's Talking",
+        "Look Whos Talking",
         FakeDriveGateway.rootId,
         isFolder: true,
       );
@@ -219,7 +219,7 @@ void main() {
       await provider.upload(path, 'conversations/job_1/result.json');
 
       final app = gateway._findChild(
-        "Look Who's Talking",
+        "Look Whos Talking",
         FakeDriveGateway.rootId,
         isFolder: true,
       )!;
@@ -254,7 +254,7 @@ void main() {
       await provider.upload(p2, 'conversations/job_1/result.json');
 
       final app = gateway._findChild(
-        "Look Who's Talking",
+        "Look Whos Talking",
         FakeDriveGateway.rootId,
         isFolder: true,
       )!;
@@ -286,7 +286,7 @@ void main() {
       final path = await localFile('a.json');
       await provider.upload(path, '/conversations//job_1/result.json/');
       final app = gateway._findChild(
-        "Look Who's Talking",
+        "Look Whos Talking",
         FakeDriveGateway.rootId,
         isFolder: true,
       )!;
@@ -376,20 +376,20 @@ void main() {
       // Simulate a different account: the old app folder is gone and a new
       // one exists under the same name.
       final oldApp = gateway._findChild(
-        "Look Who's Talking",
+        "Look Whos Talking",
         FakeDriveGateway.rootId,
         isFolder: true,
       )!;
       gateway._nodes.remove(oldApp.id);
       gateway._new(
-        name: "Look Who's Talking",
+        name: "Look Whos Talking",
         parentId: FakeDriveGateway.rootId,
         isFolder: true,
       );
 
       await provider.upload(src, 'conversations/job_2/result.json');
       final newApp = gateway._findChild(
-        "Look Who's Talking",
+        "Look Whos Talking",
         FakeDriveGateway.rootId,
         isFolder: true,
       )!;
@@ -404,6 +404,18 @@ void main() {
         isFolder: true,
       );
       expect(job2, isNotNull, reason: 'upload went into the new app folder');
+    });
+  });
+
+  group('defaults', () {
+    test('default app folder name is safe to use in Drive queries', () {
+      // Drive `q` queries cannot escape a quote inside a name search, so a
+      // folder name containing an apostrophe breaks every lookup (HTTP 400).
+      final g = FakeDriveGateway();
+      final p = _provider(g, FakeAuthGateway());
+      expect(p.appFolderName, isNotEmpty);
+      expect(p.appFolderName.contains("'"), isFalse,
+          reason: 'apostrophe in the folder name breaks Drive q queries');
     });
   });
 }

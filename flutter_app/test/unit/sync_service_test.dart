@@ -204,6 +204,22 @@ void main() {
       final stored = await store.get('job_1');
       expect(stored!.isSynced, isFalse);
     });
+
+    test('overlapping syncs for the same id upload only once', () async {
+      cloud.authenticated = true;
+      await store.save(record(id: 'job_1'));
+
+      await Future.wait([
+        service.syncConversation('job_1'),
+        service.syncConversation('job_1'),
+      ]);
+
+      // One full upload set (result.json + manifest.json; no audio) — the
+      // second overlapping call must no-op rather than create duplicates.
+      expect(cloud.uploadCalls, 2);
+      expect(cloud.files.keys.where((k) => k.startsWith('conversations/job_1/')),
+          hasLength(2));
+    });
   });
 
   group('syncAll', () {

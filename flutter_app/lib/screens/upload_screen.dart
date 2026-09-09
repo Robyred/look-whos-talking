@@ -4,6 +4,7 @@ import 'package:audio_session/audio_session.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../services/cloud_storage_provider.dart';
 import '../services/conversation_store.dart';
@@ -67,20 +68,36 @@ class _UploadScreenState extends State<UploadScreen> {
     }
   }
 
-  void _analyze() {
+  Future<void> _analyze() async {
     if (_selectedFile == null) return;
     _previewPlayer?.pause();
+
+    // Copy the picked file into durable app storage before analysing, so it
+    // survives (the picker path is a cache the OS may clear) and History can
+    // offer playback and sync the audio.
+    var audioFile = _selectedFile!;
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final baseName = _selectedName ?? 'upload';
+      final safeName = baseName.replaceAll(RegExp(r'[^\w.\-]+'), '_');
+      final dest = File('${dir.path}/'
+          'lwt_upload_${DateTime.now().millisecondsSinceEpoch}_$safeName');
+      await _selectedFile!.copy(dest.path);
+      audioFile = dest;
+    } catch (_) {
+      // If we can't persist a copy, fall back to the original (no playback).
+    }
+    if (!mounted) return;
+
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ProcessingScreen(
-          audioFile: _selectedFile!,
+          audioFile: audioFile,
           store: widget.store,
           cloud: widget.cloud,
           sourceFilename: _selectedName,
-          // The picked file lives in the picker's cache, so its path is not
-          // persisted for History playback.
-          retainAudio: false,
+          retainAudio: true,
         ),
       ),
     );

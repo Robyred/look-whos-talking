@@ -36,6 +36,9 @@ class SyncService {
   final Future<Directory> Function() _documentsDirProvider;
   final Directory Function() _tempDirProvider;
 
+  // Conversation ids whose upload is currently in flight (see syncConversation).
+  final Set<String> _inFlight = {};
+
   String _conversationDir(String id) => 'conversations/$id';
   String _remotePath(String id, String name) =>
       '${_conversationDir(id)}/$name';
@@ -48,6 +51,20 @@ class SyncService {
   /// A locally-deleted audio file (audioPath null or gone from disk) is not an
   /// error: only the JSON is uploaded.
   Future<void> syncConversation(String id) async {
+    // Guard against overlapping calls for the same id (e.g. a background
+    // auto-sync racing a manual "Sync all", or a double tap): the upload path
+    // is find-then-create, which is not atomic, so two concurrent runs could
+    // each create a duplicate remote file. A second call while one is in
+    // flight simply no-ops.
+    if (!_inFlight.add(id)) return;
+    try {
+      await _syncConversationUnsafe(id);
+    } finally {
+      _inFlight.remove(id);
+    }
+  }
+
+  Future<void> _syncConversationUnsafe(String id) async {
     if (!await provider.isAuthenticated()) {
       throw const AuthException('Not authenticated');
     }

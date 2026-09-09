@@ -106,15 +106,21 @@ class HistoryViewModel extends ChangeNotifier {
   /// Lists the remote index and downloads any conversation not already
   /// present locally. Refreshes state on completion.
   ///
+  /// Returns the number of conversations actually downloaded (0 when there was
+  /// nothing new to restore).
+  ///
   /// Throws [AuthException] when the cloud provider is not authenticated.
-  Future<void> restoreFromCloud() async {
+  Future<int> restoreFromCloud() async {
     final remote = await syncService.fetchRemoteIndex();
     final localIds = (await store.list()).map((r) => r.id).toSet();
+    var restored = 0;
     for (final meta in remote) {
       if (!localIds.contains(meta.id)) {
         await syncService.downloadConversation(meta.id);
+        restored++;
       }
     }
     await load();
+    return restored;
   }
 }

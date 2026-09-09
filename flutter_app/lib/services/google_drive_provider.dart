@@ -76,7 +76,9 @@ class GoogleDriveProvider implements CloudStorageProvider {
   GoogleDriveProvider({
     required this.gateway,
     required this.auth,
-    this.appFolderName = "Look Who's Talking",
+    // No apostrophe: Drive `q` queries can't escape a quote inside a name
+    // search, so "Look Who's Talking" would break every folder lookup (400).
+    this.appFolderName = "Look Whos Talking",
   });
 
   final DriveGateway gateway;

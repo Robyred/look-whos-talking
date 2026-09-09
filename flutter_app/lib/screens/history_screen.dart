@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../models/conversation_record.dart';
+import '../models/sync_summary.dart';
 import '../view_models/history_view_model.dart';
 import 'results_screen.dart';
 
@@ -37,6 +40,10 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   HistoryViewModel get _vm => widget.viewModel;
 
+  // True while a sync/restore is running — disables the action buttons so a
+  // double tap can't start two overlapping runs (which could duplicate uploads).
+  bool _busy = false;
+
   @override
   void initState() {
     super.initState();
@@ -58,11 +65,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Future<void> _openRecord(ConversationRecord record) async {
     final result = _vm.parseResult(record);
     if (result == null || !mounted) return;
+    // Pass the stored audio through so recordings keep their Playback tab.
+    File? audioFile;
+    final audioPath = record.audioPath;
+    if (audioPath != null && await File(audioPath).exists()) {
+      audioFile = File(audioPath);
+    }
+    if (!mounted) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ResultsScreen(
           jobId: record.id,
           result: result,
+          audioFile: audioFile,
         ),
       ),
     );
@@ -104,8 +119,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _syncAll() async {
-    final summary = await _vm.syncAll();
+    if (_busy) return;
+    setState(() => _busy = true);
+    SyncSummary summary;
+    try {
+      summary = await _vm.syncAll();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
     if (!mounted) return;
+    for (final error in summary.errors) {
+      debugPrint('sync failure: $error');
+    }
     String message;
     if (summary.failed == 0) {
       message = 'Synced ${summary.succeeded} conversation(s)';
@@ -122,10 +147,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _restore() async {
-    await _vm.restoreFromCloud();
+    if (_busy) return;
+    setState(() => _busy = true);
+    int restored;
+    try {
+      restored = await _vm.restoreFromCloud();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Restored from cloud')),
+      SnackBar(
+        content: Text(
+          restored > 0
+              ? 'Restored $restored conversation(s) from cloud'
+              : 'Nothing new to restore',
+        ),
+      ),
     );
   }
 
@@ -158,7 +196,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (showSync) ...[
             Expanded(
               child: FilledButton.icon(
-                onPressed: _syncAll,
+                onPressed: _busy ? null : _syncAll,
                 icon: const Icon(Icons.cloud_upload),
                 label: const Text('Sync all'),
               ),
@@ -168,7 +206,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           if (showRestore)
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _restore,
+                onPressed: _busy ? null : _restore,
                 icon: const Icon(Icons.cloud_download),
                 label: const Text('Restore from cloud'),
               ),
