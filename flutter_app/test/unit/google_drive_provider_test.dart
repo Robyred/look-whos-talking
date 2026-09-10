@@ -353,6 +353,25 @@ void main() {
       await provider.deleteFile('conversations/none/result.json');
       expect(gateway.calls.where((c) => c.startsWith('delete:')), isEmpty);
     });
+
+    test('deletes a folder when the path names one (prunes empties)',
+        () async {
+      final src = await localFile('a.json', [1]);
+      await provider.upload(src, 'conversations/job_1/result.json');
+      final app = gateway._findChild(
+        "Look Whos Talking",
+        FakeDriveGateway.rootId,
+        isFolder: true,
+      )!;
+      final conv = gateway._findChild('conversations', app.id, isFolder: true)!;
+      expect(gateway._findChild('job_1', conv.id, isFolder: true), isNotNull);
+
+      await provider.deleteFile('conversations/job_1/result.json');
+      await provider.deleteFile('conversations/job_1');
+
+      expect(gateway._findChild('job_1', conv.id, isFolder: true), isNull,
+          reason: 'empty conversation folder should be pruned');
+    });
   });
 
   group('auth delegation', () {

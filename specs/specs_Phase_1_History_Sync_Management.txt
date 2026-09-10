@@ -63,7 +63,7 @@ Change:
   - When a conversation is synced (isSynced true), the delete confirmation offers two choices:
       a. "Delete" (local only) — removes the local record and local audio, leaves the cloud copy. (Explicit, so no surprise restore.)
       b. "Delete & remove from cloud" — additionally deletes the remote files for that conversation.
-  - Removing from cloud: delete result.json, manifest.json, and audio.aac for conversations/<id>/ via the active provider (deleteFile is idempotent for missing files). Leave empty folders (Drive permits them) — note for Claude: folder-prune is out of scope for now.
+  - Removing from cloud: delete result.json, manifest.json, and the audio file for conversations/<slug>_<id>/ via the active provider (deleteFile is idempotent for missing files), then delete the conversation folder itself. UPDATED after device testing: folder pruning is now IN scope — no empty folders are left behind, and CloudStorageProvider.deleteFile also removes a folder when the path names one (GoogleDriveProvider resolves the folder id after failing to resolve a file).
   - Unsynced conversations: delete confirmation stays as today (local only), no cloud option.
   - Keep "Delete audio only" (long-press menu) unchanged.
 

@@ -220,9 +220,18 @@ class GoogleDriveProvider implements CloudStorageProvider {
 
   @override
   Future<void> deleteFile(String remotePath) async {
-    final fileId = await _resolveExisting(_normalisePath(remotePath));
-    if (fileId == null) return; // idempotent
-    await gateway.deleteById(fileId: fileId);
+    final normalized = _normalisePath(remotePath);
+    // Files are the common case.
+    final fileId = await _resolveExisting(normalized);
+    if (fileId != null) {
+      await gateway.deleteById(fileId: fileId);
+      return;
+    }
+    // Otherwise the path may name a folder (e.g. an emptied conversation
+    // folder being pruned after its files were deleted).
+    final folderId = await _resolveExisting(normalized, folderOnly: true);
+    if (folderId == null) return; // idempotent — nothing to delete
+    await gateway.deleteById(fileId: folderId);
   }
 
   /// Splits a normalised relative path into segments.

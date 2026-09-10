@@ -17,6 +17,7 @@ class FakeCloud implements CloudStorageProvider {
   bool authenticated = false;
   bool failNextUpload = false;
   int uploadCalls = 0;
+  final List<String> deleted = [];
 
   String get appFolder => 'conversations';
 
@@ -73,6 +74,7 @@ class FakeCloud implements CloudStorageProvider {
 
   @override
   Future<void> deleteFile(String remotePath) async {
+    deleted.add(remotePath);
     files.remove(remotePath);
   }
 }
@@ -311,6 +313,11 @@ void main() {
       expect(
         cloud.files.keys.where((k) => k.startsWith('conversations/team-call-job-1_job_1/')),
         isEmpty,
+      );
+      expect(
+        cloud.deleted,
+        contains('conversations/team-call-job-1_job_1'),
+        reason: 'the emptied conversation folder is pruned too',
       );
     });
 

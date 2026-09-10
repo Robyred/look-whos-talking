@@ -48,6 +48,14 @@ Existing `conversations/{uuid}/` folders on the cloud are orphaned — Restore w
 ## Not yet verified
 - On-device: sync a conversation and confirm the Google Drive folder now reads e.g. `my-interview_9212d114-…`, the audio file carries the true extension, delete-from-cloud removes it, and Restore still works against the new layout.
 
+## Follow-up after device testing: prune empty conversation folders (8 Sep 2026)
+Device result: delete-from-cloud removed the files correctly, and "Sync all" re-created the folder using the human-readable name — but the **empty conversation folder was left behind** in Drive.
+Fix:
+- `CloudStorageProvider.deleteFile`'s documented contract is "deletes the entry at remotePath", so `GoogleDriveProvider.deleteFile` now resolves a **file** first and, if none, resolves a **folder** and deletes that — folder pruning with no interface change.
+- `SyncService.deleteConversationFromCloud(id, filename)` now deletes the conversation folder after its files (`provider.deleteFile(dir)`), so no empty folders remain.
+- Spec `specs/specs_Phase_1_History_Sync_Management.txt` §4 updated: folder pruning is now **in** scope (previously deferred).
+Tests: Drive provider test that `deleteFile('conversations/<id>')` removes the empty folder; sync test asserting the folder path is among the deleted entries. **`flutter analyze` no issues, 217/217 green.** Not yet re-verified on device.
+
 ## What Claude should do
 1. Review the changes against the spec (slug rule order, id-from-manifest, legacy uuid extraction, audio extension handling).
 2. Re-run `flutter test` / `flutter analyze` (**216/216**).

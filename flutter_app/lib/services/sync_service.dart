@@ -159,8 +159,9 @@ class SyncService {
   }
 
   /// Deletes a conversation's remote files (result.json, manifest.json and,
-  /// when present, the audio file whatever its extension). Idempotent —
-  /// missing files are not an error.
+  /// when present, the audio file whatever its extension) and prunes the
+  /// now-empty conversation folder. Idempotent — missing entries are not an
+  /// error.
   Future<void> deleteConversationFromCloud(String id, String filename) async {
     if (!await provider.isAuthenticated()) {
       throw const AuthException('Not authenticated');
@@ -172,6 +173,8 @@ class SyncService {
     if (audio != null) {
       await provider.deleteFile('$dir/$audio');
     }
+    // Prune the folder itself so the cloud tree doesn't fill with empties.
+    await provider.deleteFile(dir);
   }
 
   /// Lists every conversation present in the remote app folder, reading each
