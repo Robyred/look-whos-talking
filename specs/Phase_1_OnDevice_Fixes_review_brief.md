@@ -17,16 +17,20 @@
 6. **History playback** — opening a recording from History now passes its stored audio, restoring the Playback tab. Uploads also now retain a durable copy of the picked audio (uploaded files are playable + sync audio).
 7. **Restore messaging** — `restoreFromCloud` returns a count; History says "Restored N" or "Nothing new to restore" instead of a false success. → `specs/Phase_1_History_Playback_Restore_review_brief.md`
 
-## New spec drafted — NOT yet implemented
-**`specs/specs_Phase_1_History_Sync_Management.txt`** — opt-in sync (auto-sync off by default), always-available "Sync all", selective (multi-select) sync, cloud-aware delete, re-sync after external delete. This is Jack's requested next feature and is ready for Claude review/approval. It consolidates requirements the user asked not to lose (auto-sync opt-in is explicitly listed as a must-keep item in the spec).
+## Spec approved & implemented (8 Sep 2026)
+Claude approved `specs/specs_Phase_1_History_Sync_Management.txt` with one change: the Settings **Auto-sync switch is REQUIRED, not optional** (spec wording updated accordingly). Claude's sequencing was followed:
+1. **`f96f80e`** `fix(phase1): sync, playback, restore on-device fixes` — the accumulated working-tree fixes above.
+2. **`179c0ce`** `feat(phase1): opt-in + selective cloud sync, always-available Sync all, cloud-aware delete` — the spec + implementation in one commit.
+
+Implementation summary: auto-sync is opt-in (background sync gated on the required Settings switch, default OFF); "Sync all" shows whenever a provider is authenticated and syncs every conversation (overwrite/recreate); multi-select → "Sync selected (N)"; cloud-aware delete (local only vs delete & remove from cloud); per-row "Sync to cloud"; restore count reporting.
 
 ## Verification status
-- **`flutter analyze`:** no issues. **`flutter test`:** **202/202 green** (in-sandbox Flutter 3.47.1; analyzer file-descriptor noise is environmental).
+- **`flutter analyze`:** no issues. **`flutter test`:** **209/209 green** (in-sandbox Flutter 3.47.1; analyzer file-descriptor noise is environmental).
 - On-device confirmations across the session: build succeeds; all three providers connect/disconnect; sync completes; uploads are playable from History; Restore reports honestly.
+- **On-device, post-implementation:** ✅ selective sync ("Sync selected") works; ✅ the Auto-sync switch works (opt-in behaviour confirmed). Still to try on device: cloud-aware delete dialog, per-row "Sync to cloud", and re-sync after deleting the remote copy.
 
 ## What Claude should do
-1. Read this brief (and the referenced per-fix briefs as needed) to become current on the uncommitted fixes.
-2. Review the drafted **History & Sync Management** spec (next feature) for approval.
-3. Re-run `flutter test` / `flutter analyze` to confirm current state.
-4. Recommend the commit grouping for the accumulated uncommitted fixes so `phase1-storage` becomes buildable/current.
-5. **Outcome:** approve the fixes and the next-feature spec, or list required changes for Jack to action. Do not modify code without Jack's approval.
+1. Read this brief (and the referenced per-fix briefs as needed) to become current.
+2. Confirm the two commits match the approved spec (including the required Auto-sync switch).
+3. Re-run `flutter test` / `flutter analyze` to confirm current state (**209/209**).
+4. **Outcome:** confirm, or list required changes for Jack to action. Do not modify code without Jack's approval.

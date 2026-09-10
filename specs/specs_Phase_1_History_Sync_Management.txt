@@ -22,7 +22,7 @@ Current: persistCompletedJob() fires a background SyncService.syncConversation a
 Change:
   - Remove the implicit background sync from persistCompletedJob() (or gate it behind an explicit flag that callers do not pass). A completed job is only saved locally.
   - isSynced remains false after a normal save, so History can show it as unsynced.
-  - Optional (small): add an "Auto-sync new conversations" switch in the Settings screen (default OFF). When ON, the background sync is restored. This is the explicit opt-in surface.
+  - REQUIRED (Claude approved as required, not optional): add an "Auto-sync new conversations" switch in the Settings screen (default OFF). When ON, the background sync is restored. This is the explicit opt-in surface.
 
 Integration note: the sync snapshot a conversation sees should not change — syncConversation(id) is still the single upload entry point (already protected against duplicate uploads by an in-flight guard).
 
@@ -73,7 +73,7 @@ This falls out of changes 2 + 3: because syncConversation overwrites/creates rem
   flutter_app/lib/services/sync_service.dart            # syncAll() syncs everything (overwrite); add deleteConversationFromCloud(id)
   flutter_app/lib/view_models/history_view_model.dart   # syncAll/syncSelected; deleteCloud option; selection state
   flutter_app/lib/screens/history_screen.dart           # action bar always shows Sync all (when authed); multi-select mode; delete dialog cloud option; per-row re-sync
-  flutter_app/lib/screens/settings_screen.dart          # optional Auto-sync switch (default OFF)
+  flutter_app/lib/screens/settings_screen.dart          # Auto-sync switch (REQUIRED, default OFF)
   flutter_app/lib/screens/processing_screen.dart        # stop auto-sync on completion (or pass explicit flag)
   flutter_app/test/unit/persist_completed_job_test.dart # update: save no longer auto-syncs by default
 
