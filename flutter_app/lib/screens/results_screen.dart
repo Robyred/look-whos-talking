@@ -162,11 +162,15 @@ class _OverviewTab extends StatelessWidget {
             ],
           ),
         ),
-        _ShareBar(
-          onShare: () => SharePlus.instance.share(
-            ShareParams(
-              text: _metricsText(),
-              subject: 'Speaker metrics — ${result.filename}',
+        SafeArea(
+          top: false,
+          child: _ShareBar(
+            label: 'Share metrics',
+            onShare: () => SharePlus.instance.share(
+              ShareParams(
+                text: _metricsText(),
+                subject: 'Speaker metrics — ${result.filename}',
+              ),
             ),
           ),
         ),
@@ -368,6 +372,22 @@ class _TranscriptTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              icon: const Icon(Icons.share, size: 18),
+              label: const Text('Share transcript'),
+              onPressed: () => SharePlus.instance.share(
+                ShareParams(
+                  text: _asText(),
+                  subject: 'Transcript — $filename',
+                ),
+              ),
+            ),
+          ),
+        ),
         Expanded(
           child: ListView.builder(
             padding: const EdgeInsets.all(16),
@@ -416,11 +436,6 @@ class _TranscriptTab extends StatelessWidget {
                 ],
               );
             },
-          ),
-        ),
-        _ShareBar(
-          onShare: () => SharePlus.instance.share(
-            ShareParams(text: _asText(), subject: 'Transcript — $filename'),
           ),
         ),
       ],
@@ -1007,8 +1022,9 @@ class _ChatTabState extends State<_ChatTab> {
 
 class _ShareBar extends StatelessWidget {
   final VoidCallback onShare;
+  final String label;
 
-  const _ShareBar({required this.onShare});
+  const _ShareBar({required this.onShare, this.label = 'Share'});
 
   @override
   Widget build(BuildContext context) {
@@ -1021,7 +1037,7 @@ class _ShareBar extends StatelessWidget {
           TextButton.icon(
             onPressed: onShare,
             icon: const Icon(Icons.share, size: 18),
-            label: const Text('Share transcript'),
+            label: Text(label),
           ),
         ],
       ),
