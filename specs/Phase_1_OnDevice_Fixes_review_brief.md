@@ -31,6 +31,8 @@ Jack found Select mode had no delete action (it was never in the spec). Added to
 - The bulk dialog offers local-only, or "Delete & remove from cloud" when any selected row is synced and a provider is authenticated (same cloud-aware path as single delete).
 - Exits selection and reports a summary snackbar; guarded by the same busy flag.
 
+Minor UI follow-up (**`c246c40`** `feat(phase1): use icon buttons for History select mode`): the AppBar Select/Done text button became an IconButton — `Icons.checklist` ("Select conversations") to enter selection mode, `Icons.close` ("Exit selection") to leave it. The action-bar buttons and long-press row menu are unchanged; widget tests updated to icon finders.
+
 ## Verification status
 - **`flutter analyze`:** no issues. **`flutter test`:** **211/211 green** (in-sandbox Flutter 3.47.1; analyzer file-descriptor noise is environmental).
 - On-device confirmations across the session: build succeeds; all three providers connect/disconnect; sync completes; uploads are playable from History; Restore reports honestly.
