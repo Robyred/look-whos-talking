@@ -33,6 +33,7 @@ void main() {
     test('exposes the four spec fields as constructed', () {
       final meta = RemoteConversationMeta(
         id: 'job_1',
+        remoteDir: 'team-call_job_1',
         filename: 'Team call',
         createdAt: DateTime.parse('2026-09-07T10:00:00Z'),
         hasAudio: true,
@@ -45,7 +46,12 @@ void main() {
 
     test('distinguishes hasAudio false (audio deleted or never present)', () {
       final noAudio =
-          RemoteConversationMeta(id: 'j', filename: 'f', createdAt: DateTime(2026), hasAudio: false);
+          RemoteConversationMeta(
+              id: 'j',
+              remoteDir: 'f_j',
+              filename: 'f',
+              createdAt: DateTime(2026),
+              hasAudio: false);
       expect(noAudio.hasAudio, isFalse);
     });
   });

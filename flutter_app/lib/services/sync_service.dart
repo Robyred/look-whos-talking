@@ -14,9 +14,11 @@ import 'conversation_store.dart';
 /// Coordinates between the local [ConversationStore] and a cloud provider.
 ///
 /// Remote layout per conversation, all under the provider's app folder:
-///   conversations/{id}/result.json   — the raw backend result JSON
-///   conversations/{id}/audio.aac     — only when audio was present locally
-///   conversations/{id}/manifest.json — filename/date metadata for restore
+///   conversations/{slug}_{id}/result.json   — the raw backend result JSON
+///   conversations/{slug}_{id}/`audio.<ext>` — only when audio was present
+///   conversations/{slug}_{id}/manifest.json — filename/date metadata
+/// where {slug} is a human-readable slug of the conversation filename and
+/// {ext} is the source audio file's real extension.
 class SyncService {
   SyncService({
     required this.store,
@@ -28,7 +30,6 @@ class SyncService {
         _tempDirProvider = tempDirProvider ?? (() => Directory.systemTemp);
 
   static const resultFileName = 'result.json';
-  static const audioFileName = 'audio.aac';
   static const manifestFileName = 'manifest.json';
 
   final ConversationStore store;
@@ -39,9 +40,31 @@ class SyncService {
   // Conversation ids whose upload is currently in flight (see syncConversation).
   final Set<String> _inFlight = {};
 
-  String _conversationDir(String id) => 'conversations/$id';
-  String _remotePath(String id, String name) =>
-      '${_conversationDir(id)}/$name';
+  /// Human-readable, filesystem/URL-safe slug of [filename], used as the
+  /// leading part of the remote conversation folder name.
+  static String _remoteSlug(String filename) {
+    var slug = p.basenameWithoutExtension(filename).toLowerCase();
+    slug = slug.replaceAll(RegExp(r'[^a-z0-9]+'), '-'); // runs → single '-'
+    slug = slug.replaceAll(RegExp(r'^-+|-+$'), ''); // strip leading/trailing '-'
+    if (slug.length > 40) slug = slug.substring(0, 40);
+    return slug.isEmpty ? 'recording' : slug;
+  }
+
+  /// Remote audio filename carrying the source file's real extension.
+  static String _audioRemoteName(String localPath) =>
+      'audio${p.extension(localPath)}';
+
+  /// Legacy/robust id extraction from a remote folder name: the uuid suffix
+  /// after the last '_' (or the whole name when there is no underscore).
+  static String _idFromFolderName(String folderName) {
+    final index = folderName.lastIndexOf('_');
+    return index == -1 ? folderName : folderName.substring(index + 1);
+  }
+
+  String _conversationDir(String id, String filename) =>
+      'conversations/${_remoteSlug(filename)}_$id';
+  String _remotePath(String id, String filename, String name) =>
+      '${_conversationDir(id, filename)}/$name';
 
   /// Uploads result.json, manifest.json and — when audio still exists
   /// locally — audio.aac for one conversation. Marks the record synced only
@@ -82,16 +105,19 @@ class SyncService {
 
       await provider.upload(
         resultFile.path,
-        _remotePath(id, resultFileName),
+        _remotePath(id, record.filename, resultFileName),
       );
       await provider.upload(
         manifestFile.path,
-        _remotePath(id, manifestFileName),
+        _remotePath(id, record.filename, manifestFileName),
       );
 
       final audioPath = record.audioPath;
       if (audioPath != null && await File(audioPath).exists()) {
-        await provider.upload(audioPath, _remotePath(id, audioFileName));
+        await provider.upload(
+          audioPath,
+          _remotePath(id, record.filename, _audioRemoteName(audioPath)),
+        );
       }
 
       await store.markSynced(id);
@@ -133,13 +159,18 @@ class SyncService {
   }
 
   /// Deletes a conversation's remote files (result.json, manifest.json and,
-  /// when present, audio.aac). Idempotent — missing files are not an error.
-  Future<void> deleteConversationFromCloud(String id) async {
+  /// when present, the audio file whatever its extension). Idempotent —
+  /// missing files are not an error.
+  Future<void> deleteConversationFromCloud(String id, String filename) async {
     if (!await provider.isAuthenticated()) {
       throw const AuthException('Not authenticated');
     }
-    for (final name in [resultFileName, manifestFileName, audioFileName]) {
-      await provider.deleteFile(_remotePath(id, name));
+    final dir = _conversationDir(id, filename);
+    await provider.deleteFile('$dir/$resultFileName');
+    await provider.deleteFile('$dir/$manifestFileName');
+    final audio = await _findRemoteAudio(dir);
+    if (audio != null) {
+      await provider.deleteFile('$dir/$audio');
     }
   }
 
@@ -152,41 +183,48 @@ class SyncService {
     final rootFiles = await provider.listFiles('conversations');
     final metas = <RemoteConversationMeta>[];
     for (final entry in rootFiles) {
-      final id = entry.filename;
-      final meta = await _metaFor(id, fallbackModifiedAt: entry.modifiedAt);
+      final meta = await _metaFor(
+        entry.filename,
+        fallbackModifiedAt: entry.modifiedAt,
+      );
       if (meta != null) metas.add(meta);
     }
     return metas;
   }
 
   // Reads one conversation's manifest (createdAt/name), falling back to the
-  // folder listing when the manifest is absent (e.g. pre-manifest uploads).
+  // folder name when the manifest is absent (e.g. pre-manifest uploads).
+  // [folderName] is the remote folder name (e.g. my-interview_<uuid>).
   Future<RemoteConversationMeta?> _metaFor(
-    String id, {
+    String folderName, {
     required DateTime fallbackModifiedAt,
   }) async {
     final tempDir = _tempDirProvider();
-    final manifestLocal = File(p.join(tempDir.path, '$id-manifest.json'));
+    final manifestLocal =
+        File(p.join(tempDir.path, '$folderName-manifest.json'));
+    final remoteDir = 'conversations/$folderName';
     try {
       await provider.download(
-        _remotePath(id, manifestFileName),
+        '$remoteDir/$manifestFileName',
         manifestLocal.path,
       );
       final manifest =
           ConversationManifest.decode(await manifestLocal.readAsString());
-      final hasAudio = await _hasRemoteAudio(id);
+      final hasAudio = await _findRemoteAudio(remoteDir) != null;
       return RemoteConversationMeta(
-        id: id,
+        id: manifest.id, // authoritative id comes from the manifest
+        remoteDir: folderName,
         filename: manifest.filename,
         createdAt: manifest.createdAt,
         hasAudio: hasAudio,
       );
     } on StorageException {
       // No manifest (legacy). Folder name is the best filename we have.
-      final hasAudio = await _hasRemoteAudio(id);
+      final hasAudio = await _findRemoteAudio(remoteDir) != null;
       return RemoteConversationMeta(
-        id: id,
-        filename: id,
+        id: _idFromFolderName(folderName),
+        remoteDir: folderName,
+        filename: folderName,
         createdAt: fallbackModifiedAt,
         hasAudio: hasAudio,
       );
@@ -195,41 +233,52 @@ class SyncService {
     }
   }
 
-  Future<bool> _hasRemoteAudio(String id) async {
-    final files = await provider.listFiles(_conversationDir(id));
-    return files.any((f) => f.filename == audioFileName);
+  /// Filename of the first `audio.*` file in [remoteDir], or null when none.
+  Future<String?> _findRemoteAudio(String remoteDir) async {
+    final files = await provider.listFiles(remoteDir);
+    for (final file in files) {
+      if (file.filename.startsWith('audio.')) return file.filename;
+    }
+    return null;
   }
 
-  /// Restores one conversation: downloads result.json (+ audio.aac if the
-  /// remote has it) and saves a local record. Audio goes to the app documents
+  /// Restores one conversation: downloads result.json (+ its audio file if the
+  /// remote has one) and saves a local record. Audio goes to the app documents
   /// directory; result.json is stored verbatim as resultJson.
-  Future<void> downloadConversation(String remoteId) async {
+  ///
+  /// [remoteDir] is the remote folder name (e.g. `my-interview_<uuid>`). The
+  /// local record id comes from the manifest, or from the uuid suffix of
+  /// [remoteDir] for legacy folders with no manifest.
+  Future<void> downloadConversation(String remoteDir) async {
     if (!await provider.isAuthenticated()) {
       throw const AuthException('Not authenticated');
     }
     final docsDir = await _documentsDirProvider();
     final tempDir = _tempDirProvider();
-    final resultLocal = File(p.join(tempDir.path, '$remoteId-result.json'));
-    final manifestLocal = File(p.join(tempDir.path, '$remoteId-manifest.json'));
+    final resultLocal = File(p.join(tempDir.path, '$remoteDir-result.json'));
+    final manifestLocal = File(p.join(tempDir.path, '$remoteDir-manifest.json'));
+    final remoteFolder = 'conversations/$remoteDir';
 
     try {
       await provider.download(
-        _remotePath(remoteId, resultFileName),
+        '$remoteFolder/$resultFileName',
         resultLocal.path,
       );
       final resultJson = await resultLocal.readAsString();
 
+      String id;
       String filename;
       DateTime createdAt;
       double durationSec;
       int speakerCount;
       try {
         await provider.download(
-          _remotePath(remoteId, manifestFileName),
+          '$remoteFolder/$manifestFileName',
           manifestLocal.path,
         );
         final manifest =
             ConversationManifest.decode(await manifestLocal.readAsString());
+        id = manifest.id;
         filename = manifest.filename;
         createdAt = manifest.createdAt;
         durationSec = manifest.durationSec;
@@ -238,24 +287,23 @@ class SyncService {
         // Legacy conversation without a manifest: derive what we can from the
         // result JSON itself.
         final parsed = jsonDecode(resultJson) as Map<String, dynamic>;
-        filename = parsed['filename'] as String? ?? remoteId;
+        id = _idFromFolderName(remoteDir);
+        filename = parsed['filename'] as String? ?? remoteDir;
         createdAt = DateTime.now();
         durationSec = (parsed['total_duration_sec'] as num?)?.toDouble() ?? 0;
         speakerCount = parsed['speaker_count'] as int? ?? 0;
       }
 
       String? audioPath;
-      if (await _hasRemoteAudio(remoteId)) {
-        audioPath = p.join(docsDir.path, '$remoteId.$audioFileName');
-        await provider.download(
-          _remotePath(remoteId, audioFileName),
-          audioPath,
-        );
+      final audioName = await _findRemoteAudio(remoteFolder);
+      if (audioName != null) {
+        audioPath = p.join(docsDir.path, '$id${p.extension(audioName)}');
+        await provider.download('$remoteFolder/$audioName', audioPath);
       }
 
       await store.save(
         ConversationRecord(
-          id: remoteId,
+          id: id,
           filename: filename,
           createdAt: createdAt,
           durationSec: durationSec,

@@ -18,12 +18,16 @@ class RemoteFileInfo {
 // on a new device.
 class RemoteConversationMeta {
   final String id;
+  // The remote folder name (e.g. my-interview_<uuid>) — used to build cloud
+  // paths. The id above may differ for legacy folders (uuid extracted).
+  final String remoteDir;
   final String filename;
   final DateTime createdAt;
   final bool hasAudio;
 
   const RemoteConversationMeta({
     required this.id,
+    required this.remoteDir,
     required this.filename,
     required this.createdAt,
     required this.hasAudio,

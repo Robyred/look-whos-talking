@@ -148,18 +148,18 @@ void main() {
 
       await service.syncConversation('job_1');
 
-      expect(cloud.files.containsKey('conversations/job_1/result.json'), isTrue);
-      expect(cloud.files.containsKey('conversations/job_1/manifest.json'), isTrue);
-      expect(cloud.files.containsKey('conversations/job_1/audio.aac'), isTrue);
+      expect(cloud.files.containsKey('conversations/team-call-job-1_job_1/result.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/team-call-job-1_job_1/manifest.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/team-call-job-1_job_1/audio.aac'), isTrue);
 
       final resultBody = utf8.decode(
-          cloud.files['conversations/job_1/result.json']!);
+          cloud.files['conversations/team-call-job-1_job_1/result.json']!);
       expect(jsonDecode(resultBody), {'job_id': 'job_1', 'speaker_count': 3});
-      expect(cloud.files['conversations/job_1/audio.aac'], [1, 2, 3]);
+      expect(cloud.files['conversations/team-call-job-1_job_1/audio.aac'], [1, 2, 3]);
 
       // Result JSON is stored verbatim, not wrapped.
       final manifest = jsonDecode(utf8.decode(
-          cloud.files['conversations/job_1/manifest.json']!)) as Map;
+          cloud.files['conversations/team-call-job-1_job_1/manifest.json']!)) as Map;
       expect(manifest['filename'], 'Team call job_1');
       expect(manifest['duration_sec'], 120.5);
       expect(manifest['speaker_count'], 3);
@@ -179,9 +179,9 @@ void main() {
 
       await service.syncConversation('job_1');
 
-      expect(cloud.files.containsKey('conversations/job_1/result.json'), isTrue);
-      expect(cloud.files.containsKey('conversations/job_1/manifest.json'), isTrue);
-      expect(cloud.files.containsKey('conversations/job_1/audio.aac'), isFalse);
+      expect(cloud.files.containsKey('conversations/team-call-job-1_job_1/result.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/team-call-job-1_job_1/manifest.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/team-call-job-1_job_1/audio.aac'), isFalse);
       final stored = await store.get('job_1');
       expect(stored!.isSynced, isTrue);
     });
@@ -217,7 +217,7 @@ void main() {
       // One full upload set (result.json + manifest.json; no audio) — the
       // second overlapping call must no-op rather than create duplicates.
       expect(cloud.uploadCalls, 2);
-      expect(cloud.files.keys.where((k) => k.startsWith('conversations/job_1/')),
+      expect(cloud.files.keys.where((k) => k.startsWith('conversations/team-call-job-1_job_1/')),
           hasLength(2));
     });
   });
@@ -233,9 +233,9 @@ void main() {
 
       expect(summary.succeeded, 3);
       expect(summary.failed, 0);
-      expect(cloud.files.containsKey('conversations/job_1/result.json'), isTrue);
-      expect(cloud.files.containsKey('conversations/job_2/result.json'), isTrue);
-      expect(cloud.files.containsKey('conversations/job_3/result.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/team-call-job-1_job_1/result.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/team-call-job-2_job_2/result.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/team-call-job-3_job_3/result.json'), isTrue);
     });
 
     test('is safe to run when everything is already synced', () async {
@@ -281,9 +281,9 @@ void main() {
       final summary = await service.syncByIds(['a', 'c']);
 
       expect(summary.succeeded, 2);
-      expect(cloud.files.containsKey('conversations/a/result.json'), isTrue);
-      expect(cloud.files.containsKey('conversations/c/result.json'), isTrue);
-      expect(cloud.files.containsKey('conversations/b/result.json'), isFalse);
+      expect(cloud.files.containsKey('conversations/team-call-a_a/result.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/team-call-c_c/result.json'), isTrue);
+      expect(cloud.files.containsKey('conversations/team-call-b_b/result.json'), isFalse);
     });
 
     test('throws AuthException up front when not authenticated', () async {
@@ -302,23 +302,84 @@ void main() {
       await store.save(record(id: 'job_1', audioPath: audioPath));
       await service.syncConversation('job_1');
       expect(
-        cloud.files.keys.where((k) => k.startsWith('conversations/job_1/')),
+        cloud.files.keys.where((k) => k.startsWith('conversations/team-call-job-1_job_1/')),
         hasLength(3),
       );
 
-      await service.deleteConversationFromCloud('job_1');
+      await service.deleteConversationFromCloud('job_1', 'Team call job_1');
 
       expect(
-        cloud.files.keys.where((k) => k.startsWith('conversations/job_1/')),
+        cloud.files.keys.where((k) => k.startsWith('conversations/team-call-job-1_job_1/')),
         isEmpty,
       );
     });
 
     test('throws AuthException when not authenticated', () async {
       await expectLater(
-        service.deleteConversationFromCloud('job_1'),
+        service.deleteConversationFromCloud('job_1', 'Team call job_1'),
         throwsA(isA<AuthException>()),
       );
+    });
+  });
+
+  group('human-readable folder names', () {
+    test('slugifies a filename with an extension', () async {
+      cloud.authenticated = true;
+      await store.save(record(id: 'job_1', filename: 'My Interview.mp3'));
+      await service.syncConversation('job_1');
+      expect(
+        cloud.files
+            .containsKey('conversations/my-interview_job_1/result.json'),
+        isTrue,
+      );
+    });
+
+    test('strips punctuation, spaces and apostrophes', () async {
+      cloud.authenticated = true;
+      await store.save(
+        record(id: 'job_2', filename: "Interview — Jan '26.m4a"),
+      );
+      await service.syncConversation('job_2');
+      expect(
+        cloud.files
+            .containsKey('conversations/interview-jan-26_job_2/result.json'),
+        isTrue,
+      );
+    });
+
+    test('truncates the slug to 40 characters', () async {
+      cloud.authenticated = true;
+      final long = 'a' * 50;
+      await store.save(record(id: 'job_3', filename: '$long.wav'));
+      await service.syncConversation('job_3');
+      expect(
+        cloud.files
+            .containsKey('conversations/${'a' * 40}_job_3/result.json'),
+        isTrue,
+      );
+    });
+
+    test('falls back to "recording" when the slug would be empty', () async {
+      cloud.authenticated = true;
+      await store.save(record(id: 'job_4', filename: '!!!.wav'));
+      await service.syncConversation('job_4');
+      expect(
+        cloud.files.containsKey('conversations/recording_job_4/result.json'),
+        isTrue,
+      );
+    });
+
+    test('remote audio carries the source file extension', () async {
+      cloud.authenticated = true;
+      final audioPath = await writeAudio('clip.m4a');
+      await store.save(record(id: 'job_1', audioPath: audioPath));
+      await service.syncConversation('job_1');
+      expect(
+        cloud.files
+            .containsKey('conversations/team-call-job-1_job_1/audio.m4a'),
+        isTrue,
+      );
+      expect(cloud.files.keys.any((k) => k.endsWith('audio.aac')), isFalse);
     });
   });
 
@@ -339,19 +400,23 @@ void main() {
       expect(metas.length, 1);
       final meta = metas.single;
       expect(meta.id, 'job_1');
+      expect(meta.remoteDir, 'team-call-job-1_job_1');
       expect(meta.filename, 'Team call job_1');
       expect(meta.createdAt, DateTime(2026, 9, 7, 10, 30));
       expect(meta.hasAudio, isTrue);
     });
 
-    test('falls back to folder name when no manifest is present', () async {
+    test('falls back to the folder name when no manifest is present',
+        () async {
       cloud.authenticated = true;
-      // Remote files exist but were uploaded without a manifest (legacy).
-      cloud.files['conversations/legacy_1/result.json'] = utf8.encode('{}');
+      // Legacy layout: conversations/{uuid}/ with no manifest.
+      const folder = '9212d114-fcb0-49be-8866-b7b96dbcd254';
+      cloud.files['conversations/$folder/result.json'] = utf8.encode('{}');
 
       final metas = await service.fetchRemoteIndex();
-      expect(metas.single.id, 'legacy_1');
-      expect(metas.single.filename, 'legacy_1');
+      expect(metas.single.id, folder); // uuid extracted from folder name
+      expect(metas.single.remoteDir, folder);
+      expect(metas.single.filename, folder);
       expect(metas.single.hasAudio, isFalse);
     });
   });
@@ -365,7 +430,7 @@ void main() {
       // Forget it locally, as on a fresh device.
       await store.delete('job_1');
 
-      await service.downloadConversation('job_1');
+      await service.downloadConversation('team-call-job-1_job_1');
 
       final restored = await store.get('job_1');
       expect(restored, isNotNull);
@@ -390,7 +455,7 @@ void main() {
       await service.syncConversation('job_1');
       await store.delete('job_1');
 
-      await service.downloadConversation('job_1');
+      await service.downloadConversation('team-call-job-1_job_1');
 
       final restored = await store.get('job_1');
       expect(restored!.audioPath, isNull);
@@ -408,7 +473,8 @@ void main() {
 
     test('restores a legacy conversation with no manifest', () async {
       cloud.authenticated = true;
-      cloud.files['conversations/old_1/result.json'] = utf8.encode(
+      const folder = 'aa11bb22-cc33-44dd-55ee-66ff77008899';
+      cloud.files['conversations/$folder/result.json'] = utf8.encode(
         jsonEncode({
           'filename': 'Old recording',
           'total_duration_sec': 55.0,
@@ -416,9 +482,9 @@ void main() {
         }),
       );
 
-      await service.downloadConversation('old_1');
+      await service.downloadConversation(folder);
 
-      final restored = await store.get('old_1');
+      final restored = await store.get(folder); // uuid from the folder name
       expect(restored!.filename, 'Old recording');
       expect(restored.durationSec, 55.0);
       expect(restored.speakerCount, 2);

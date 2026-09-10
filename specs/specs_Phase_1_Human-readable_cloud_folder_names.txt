@@ -1,0 +1,62 @@
+DS Brief: Human-readable cloud folder names + correct audio extension
+
+Goal: Replace conversations/{uuid}/ in cloud storage with conversations/{slug}_{uuid}/. Also fix the hardcoded audio.aac remote filename so it carries the source file's real extension.
+
+New remote layout:
+
+
+conversations/interview-with-john_9212d114-fcb0-49be-8866-b7b96dbcd254/
+  result.json
+  manifest.json
+  audio.m4a        ← or .mp3, .aac, whatever the source file is
+Slug rule
+Add static String _remoteSlug(String filename) to SyncService:
+
+Strip extension first: p.basenameWithoutExtension(filename)
+Lowercase
+Replace any run of non-alphanumeric characters with a single -
+Strip leading/trailing -
+Truncate to 40 characters
+If empty result, return 'recording'
+Examples: "My Interview.mp3" → "my-interview", "Interview — Jan '26.m4a" → "interview-jan-26".
+
+sync_service.dart — all changes
+Remove static const audioFileName = 'audio.aac'.
+
+Add static String _audioRemoteName(String localPath) => 'audio${p.extension(localPath)}'.
+
+Change _conversationDir(String id) → _conversationDir(String id, String filename), returning 'conversations/${_remoteSlug(filename)}_$id'.
+
+Change _remotePath(String id, String name) → _remotePath(String id, String filename, String name), delegating to the updated _conversationDir.
+
+_syncConversationUnsafe — already has record. Replace all _remotePath(id, ...) with _remotePath(id, record.filename, ...). For the audio upload, replace _remotePath(id, audioFileName) with _remotePath(id, record.filename, _audioRemoteName(audioPath)).
+
+deleteConversationFromCloud — change signature to deleteConversationFromCloud(String id, String filename). Use _conversationDir(id, filename) for the folder path. Delete result.json and manifest.json by name as before. For audio: call _findRemoteAudio (see below) and delete whatever filename it returns, if any.
+
+Replace _hasRemoteAudio(String id) with _findRemoteAudio(String remoteDir) → Future<String?> — lists files at remoteDir, returns the filename of the first file starting with 'audio.', or null if none. remoteDir is the full cloud path (e.g. 'conversations/my-interview_9212d114-...').
+
+_metaFor(String folderName, ...) — folderName is the raw value from listFiles('conversations'). Build paths as 'conversations/$folderName/$manifestFileName'. In the success branch: return RemoteConversationMeta(id: manifest.id, remoteDir: folderName, ...) — the id comes from the manifest, NOT from folderName. In the legacy no-manifest fallback: extract the UUID by taking everything after the last _ in folderName (if no _, use the whole string); use that as id, folderName as the display filename.
+
+fetchRemoteIndex — unchanged logic; entry.filename is the folder name, pass it to _metaFor as-is.
+
+downloadConversation — rename parameter from remoteId to remoteDir. Use remoteDir only for cloud paths ('conversations/$remoteDir/$resultFileName' etc.). Get local record ID from manifest.id. For audio: call _findRemoteAudio('conversations/$remoteDir') to get the audio filename (e.g. audio.m4a); if found, derive local path as p.join(docsDir.path, '${manifest.id}${p.extension(audioFilename)}'). Save local record with id: manifest.id. Legacy fallback: extract UUID from remoteDir (after last _) as the local ID.
+
+lib/models/cloud_models.dart
+Add final String remoteDir to RemoteConversationMeta (the folder name, used for cloud path building). Update constructor accordingly.
+
+lib/view_models/history_view_model.dart
+deleteConversationFromCloud(record.id) → deleteConversationFromCloud(record.id, record.filename) — the record is already at the call site.
+downloadConversation(meta.id) → downloadConversation(meta.remoteDir).
+conversation_manifest.dart — no changes
+The id field already exists and is already encoded/decoded. Nothing to add.
+
+Tests
+_remoteSlug: test normal name with extension, name with spaces, special characters, empty string, name over 40 chars.
+_findRemoteAudio: returns filename when audio.* present, null when absent.
+All path assertions: update expected strings to 'conversations/{slug}_{id}/...'.
+deleteConversationFromCloud call sites: add filename argument.
+downloadConversation call sites: pass remoteDir (folder name), assert saved record uses manifest.id not folder name.
+Breaking change
+Existing conversations/{uuid}/ folders on cloud are orphaned. Restore will not surface them (no manifest at the old path). They can be ignored or deleted manually from Google Drive. Acceptable for development — we have no production users yet.
+
+Commit: feat(phase1): human-readable cloud folder names and correct audio extension

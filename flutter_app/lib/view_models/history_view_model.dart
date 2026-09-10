@@ -120,7 +120,10 @@ class HistoryViewModel extends ChangeNotifier {
   }) async {
     if (alsoCloud) {
       try {
-        await syncService.deleteConversationFromCloud(record.id);
+        await syncService.deleteConversationFromCloud(
+          record.id,
+          record.filename,
+        );
       } catch (_) {
         // Best effort; local delete proceeds regardless.
       }
@@ -141,7 +144,7 @@ class HistoryViewModel extends ChangeNotifier {
     var restored = 0;
     for (final meta in remote) {
       if (!localIds.contains(meta.id)) {
-        await syncService.downloadConversation(meta.id);
+        await syncService.downloadConversation(meta.remoteDir);
         restored++;
       }
     }

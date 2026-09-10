@@ -59,6 +59,7 @@ class _ScriptedSync extends SyncService {
         .map(
           (id) => RemoteConversationMeta(
             id: id,
+            remoteDir: id,
             filename: 'restored $id',
             createdAt: DateTime(2026, 9, 1),
             hasAudio: false,
