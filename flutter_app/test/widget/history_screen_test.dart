@@ -275,12 +275,12 @@ void main() {
     await store.save(rec('b'));
     await pumpHistory(tester, cloud: _Cloud(authenticated: true));
 
-    await tester.tap(find.text('Select'));
+    await tester.tap(find.byIcon(Icons.checklist));
     await tester.pumpAndSettle();
 
     expect(find.byType(Checkbox), findsNWidgets(2));
     expect(find.text('0 selected'), findsOneWidget);
-    expect(find.text('Done'), findsOneWidget);
+    expect(find.byIcon(Icons.close), findsOneWidget);
 
     await tester.tap(find.text('Team call a'));
     await tester.pumpAndSettle();
@@ -309,7 +309,7 @@ void main() {
     await store.save(rec('c'));
     await pumpHistory(tester, cloud: _Cloud(authenticated: true));
 
-    await tester.tap(find.text('Select'));
+    await tester.tap(find.byIcon(Icons.checklist));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Team call a'));
     await tester.tap(find.text('Team call b'));
@@ -334,7 +334,7 @@ void main() {
     await store.save(rec('b'));
     await pumpHistory(tester, cloud: _Cloud(authenticated: true));
 
-    await tester.tap(find.text('Select'));
+    await tester.tap(find.byIcon(Icons.checklist));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Team call a'));
     await tester.pumpAndSettle();

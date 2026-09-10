@@ -355,9 +355,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         ),
         actions: [
           if (_vm.records.isNotEmpty)
-            TextButton(
+            IconButton(
+              icon: Icon(_selecting ? Icons.close : Icons.checklist),
+              tooltip:
+                  _selecting ? 'Exit selection' : 'Select conversations',
               onPressed: _selecting ? _exitSelection : _enterSelection,
-              child: Text(_selecting ? 'Done' : 'Select'),
             ),
           const SizedBox(width: 8),
         ],
