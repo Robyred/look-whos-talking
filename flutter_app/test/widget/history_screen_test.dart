@@ -301,4 +301,48 @@ void main() {
     expect(find.text('Delete & remove from cloud'), findsOneWidget);
     expect(find.text('Delete (local)'), findsOneWidget);
   });
+
+  testWidgets('delete selected removes exactly the selected conversations',
+      (tester) async {
+    await store.save(rec('a'));
+    await store.save(rec('b'));
+    await store.save(rec('c'));
+    await pumpHistory(tester, cloud: _Cloud(authenticated: true));
+
+    await tester.tap(find.text('Select'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Team call a'));
+    await tester.tap(find.text('Team call b'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete selected (2)'), findsOneWidget);
+
+    await tester.tap(find.text('Delete selected (2)'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete 2 conversation(s)?'), findsOneWidget);
+
+    await tester.tap(find.text('Delete'));
+    await tester.pumpAndSettle();
+
+    expect(await store.get('a'), isNull);
+    expect(await store.get('b'), isNull);
+    expect(await store.get('c'), isNotNull, reason: 'unselected row survives');
+  });
+
+  testWidgets('bulk delete offers the cloud option when a selected row is '
+      'synced', (tester) async {
+    await store.save(rec('a', isSynced: true));
+    await store.save(rec('b'));
+    await pumpHistory(tester, cloud: _Cloud(authenticated: true));
+
+    await tester.tap(find.text('Select'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Team call a'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete selected (1)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Delete & remove from cloud'), findsOneWidget);
+    expect(find.text('Delete (local)'), findsOneWidget);
+  });
 }

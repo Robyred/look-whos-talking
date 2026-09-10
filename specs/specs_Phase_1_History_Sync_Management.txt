@@ -44,6 +44,17 @@ Add a selection mode to the History list:
   - Selection clears on leaving the mode or after the sync completes.
   - "Sync all" and "Sync selected" share the same underlying per-conversation upload; the only difference is the id list.
 
+3b. Delete selected (bulk delete)
+File: lib/screens/history_screen.dart
+
+Selection mode also offers a bulk delete:
+  - With one or more rows selected, the action bar shows BOTH "Sync selected (N)" and "Delete selected (N)".
+  - "Delete selected (N)" opens a confirmation dialog: "Delete N conversation(s)?" with the same choice as single delete:
+      a. "Delete (local)" — local record + local audio only.
+      b. "Delete & remove from cloud" — offered only when at least one selected row is synced; also removes those conversations' remote files.
+  - On confirm, each selected conversation is deleted via the same cloud-aware delete path as §4; selection mode then exits and a summary snackbar is shown ("Deleted N conversation(s)").
+  - Guarded by the same busy flag as sync so a double tap can't run twice.
+
 4. Cloud-aware delete
 File: lib/screens/history_screen.dart, lib/view_models/history_view_model.dart, lib/services/sync_service.dart
 
@@ -82,10 +93,10 @@ This falls out of changes 2 + 3: because syncConversation overwrites/creates rem
   - syncService.syncAll: uploads every record (incl. already-synced); overwrites, never duplicates; summary counts correct.
   - syncService.deleteConversationFromCloud: removes the three remote files; idempotent when files already absent.
   - history view model: selecting N and syncing syncs exactly those; delete-with-cloud calls remote delete only when isSynced and chosen.
-  - history widget: "Sync all" visible whenever cloud authenticated (not gated on hasUnsynced); multi-select enter/exit and "Sync selected (N)"; delete dialog shows the cloud option for synced rows only. When no provider is authenticated, Sync actions are hidden (optionally with a hint to connect one in Settings).
+  - history widget: "Sync all" visible whenever cloud authenticated (not gated on hasUnsynced); multi-select enter/exit and "Sync selected (N)"; delete dialog shows the cloud option for synced rows only; "Delete selected (N)" removes exactly the selected conversations. When no provider is authenticated, Sync actions are hidden (optionally with a hint to connect one in Settings).
 
 9. Commit shape
-  Single commit on phase1-storage:
-    feat(phase1): opt-in + selective cloud sync, always-available Sync all, cloud-aware delete
+  Original pass: single commit `feat(phase1): opt-in + selective cloud sync, always-available Sync all, cloud-aware delete`.
+  Bulk delete (§3b) was added afterwards as a follow-up commit: `feat(phase1): delete selected conversations from History`.
 
 END SPEC DOCUMENT

@@ -271,6 +271,81 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  List<ConversationRecord> _selectedRecords() => _vm.records
+      .where((r) => _selectedIds.contains(r.id))
+      .toList();
+
+  Future<_DeleteChoice> _showBulkDeleteDialog(
+    int count, {
+    required bool offerCloud,
+  }) {
+    return showDialog<_DeleteChoice>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Delete $count conversation(s)?'),
+        content: Text(
+          offerCloud
+              ? 'The selected conversations will be deleted from this device '
+                  'and, if you choose, removed from cloud storage.'
+              : 'The selected conversations and their audio will be '
+                  'permanently deleted from this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(_DeleteChoice.none),
+            child: const Text('Cancel'),
+          ),
+          if (offerCloud)
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(_DeleteChoice.localOnly),
+              child: const Text('Delete (local)'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(
+                offerCloud ? _DeleteChoice.localAndCloud : _DeleteChoice.localOnly),
+            child: Text(offerCloud ? 'Delete & remove from cloud' : 'Delete'),
+          ),
+        ],
+      ),
+    ).then((c) => c ?? _DeleteChoice.none);
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_busy) return;
+    final records = _selectedRecords();
+    if (records.isEmpty) return;
+    final offerCloud =
+        _vm.cloudAuthenticated && records.any((r) => r.isSynced);
+    final choice = await _showBulkDeleteDialog(
+      records.length,
+      offerCloud: offerCloud,
+    );
+    if (choice == _DeleteChoice.none || !mounted) return;
+
+    setState(() => _busy = true);
+    try {
+      for (final record in records) {
+        await _vm.deleteConversation(
+          record,
+          alsoCloud: choice == _DeleteChoice.localAndCloud,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (mounted) _exitSelection();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          choice == _DeleteChoice.localAndCloud
+              ? 'Deleted ${records.length} conversation(s), including cloud'
+              : 'Deleted ${records.length} conversation(s)',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -315,6 +390,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     : _syncSelected,
                 icon: const Icon(Icons.cloud_upload),
                 label: Text('Sync selected ($count)'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _busy || count == 0 ? null : _deleteSelected,
+                icon: const Icon(Icons.delete_outline),
+                label: Text('Delete selected ($count)'),
               ),
             ),
           ],
