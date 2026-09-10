@@ -21,16 +21,23 @@
 Claude approved `specs/specs_Phase_1_History_Sync_Management.txt` with one change: the Settings **Auto-sync switch is REQUIRED, not optional** (spec wording updated accordingly). Claude's sequencing was followed:
 1. **`f96f80e`** `fix(phase1): sync, playback, restore on-device fixes` — the accumulated working-tree fixes above.
 2. **`179c0ce`** `feat(phase1): opt-in + selective cloud sync, always-available Sync all, cloud-aware delete` — the spec + implementation in one commit.
+3. **`1349602`** `docs(phase1): auto-sync switch is required; record implementation + device verification` — spec wording + this brief.
 
 Implementation summary: auto-sync is opt-in (background sync gated on the required Settings switch, default OFF); "Sync all" shows whenever a provider is authenticated and syncs every conversation (overwrite/recreate); multi-select → "Sync selected (N)"; cloud-aware delete (local only vs delete & remove from cloud); per-row "Sync to cloud"; restore count reporting.
 
+### Follow-up added after device testing: bulk delete (spec §3b)
+Jack found Select mode had no delete action (it was never in the spec). Added to the spec as §3b and implemented in **`3b8aae1`** `feat(phase1): delete selected conversations from History`:
+- Select mode now shows **both** "Sync selected (N)" and **"Delete selected (N)"**.
+- The bulk dialog offers local-only, or "Delete & remove from cloud" when any selected row is synced and a provider is authenticated (same cloud-aware path as single delete).
+- Exits selection and reports a summary snackbar; guarded by the same busy flag.
+
 ## Verification status
-- **`flutter analyze`:** no issues. **`flutter test`:** **209/209 green** (in-sandbox Flutter 3.47.1; analyzer file-descriptor noise is environmental).
+- **`flutter analyze`:** no issues. **`flutter test`:** **211/211 green** (in-sandbox Flutter 3.47.1; analyzer file-descriptor noise is environmental).
 - On-device confirmations across the session: build succeeds; all three providers connect/disconnect; sync completes; uploads are playable from History; Restore reports honestly.
-- **On-device, post-implementation:** ✅ selective sync ("Sync selected") works; ✅ the Auto-sync switch works (opt-in behaviour confirmed). Still to try on device: cloud-aware delete dialog, per-row "Sync to cloud", and re-sync after deleting the remote copy.
+- **On-device, post-implementation:** ✅ selective sync ("Sync selected") works; ✅ the Auto-sync switch works (opt-in behaviour confirmed). **Pending on device:** bulk "Delete selected", cloud-aware delete dialog, per-row "Sync to cloud", and re-sync after deleting the remote copy.
 
 ## What Claude should do
 1. Read this brief (and the referenced per-fix briefs as needed) to become current.
-2. Confirm the two commits match the approved spec (including the required Auto-sync switch).
-3. Re-run `flutter test` / `flutter analyze` to confirm current state (**209/209**).
+2. Confirm the commits match the approved spec — including the required Auto-sync switch and the §3b bulk-delete addition.
+3. Re-run `flutter test` / `flutter analyze` to confirm current state (**211/211**).
 4. **Outcome:** confirm, or list required changes for Jack to action. Do not modify code without Jack's approval.
