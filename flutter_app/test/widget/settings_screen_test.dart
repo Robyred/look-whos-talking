@@ -51,7 +51,7 @@ void main() {
     await tester.pumpWidget(screen(threeProviders()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Cloud storage'), findsOneWidget);
+    expect(find.text('CLOUD STORAGE'), findsOneWidget);
     expect(find.text('Google Drive'), findsOneWidget);
     expect(find.text('OneDrive'), findsOneWidget);
     expect(find.text('Dropbox'), findsOneWidget);

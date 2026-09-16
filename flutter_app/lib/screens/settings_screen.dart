@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../services/cloud_storage_provider.dart';
+import '../theme.dart';
 import '../services/sync_settings.dart';
+
+const _sectionHeading = TextStyle(
+  color: kMuted,
+  fontSize: 12,
+  fontWeight: FontWeight.w600,
+  letterSpacing: 1.5,
+);
 
 /// Cloud-storage connections. Each provider in [providers] gets a row with
 /// Connect/Disconnect — sync through those providers is wired up later.
@@ -106,33 +114,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
-            child: Text(
-              'Cloud storage',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(color: Colors.grey[600]),
-            ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 20, 20, 8),
+            child: Text('CLOUD STORAGE', style: _sectionHeading),
           ),
           for (final provider in widget.providers)
-            _ProviderRow(
-              provider: provider,
-              isAuthenticated: _authState[provider] ?? false,
-              loading: _loading,
-              onConnect: () => _connect(provider),
-              onDisconnect: () => _disconnect(provider),
+            Card(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              shape:
+                  RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: _ProviderRow(
+                provider: provider,
+                isAuthenticated: _authState[provider] ?? false,
+                loading: _loading,
+                onConnect: () => _connect(provider),
+                onDisconnect: () => _disconnect(provider),
+              ),
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
-            child: Text(
-              'Sync',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(color: Colors.grey[600]),
-            ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 24, 20, 8),
+            child: Text('SYNC', style: _sectionHeading),
           ),
           SwitchListTile(
             value: _autoSync,
@@ -170,25 +171,25 @@ class _ProviderRow extends StatelessWidget {
     final connected = isAuthenticated;
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor:
-            (connected ? Colors.green : Colors.grey).withAlpha(26),
+        // Teal wash when connected, outline grey otherwise (plan §5.5).
+        backgroundColor: connected
+            ? kSecondaryTeal.withValues(alpha: 0.15)
+            : kOutline,
         child: Icon(
           Icons.cloud_outlined,
-          color: connected ? Colors.green[700] : Colors.grey[600],
+          color: connected ? kSecondaryTeal : kMuted,
         ),
       ),
       title: Text(provider.displayName),
       subtitle: Text(
         connected ? 'Connected' : 'Not connected',
-        style: TextStyle(
-          color: connected ? Colors.green[700] : Colors.grey[500],
-        ),
+        style: TextStyle(color: connected ? kSecondaryTeal : kMuted),
       ),
       trailing: connected
           ? Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                const Icon(Icons.check_circle, color: kSecondaryTeal, size: 20),
                 const SizedBox(width: 8),
                 TextButton(
                   onPressed: loading ? null : onDisconnect,
