@@ -11,6 +11,7 @@ class NameReviewScreen extends StatefulWidget {
   final DiarizationResult result;
   final Map<String, String> proposals;
   final File? audioFile;
+  final String? displayName;
 
   const NameReviewScreen({
     super.key,
@@ -18,6 +19,7 @@ class NameReviewScreen extends StatefulWidget {
     required this.result,
     required this.proposals,
     this.audioFile,
+    this.displayName,
   });
 
   @override
@@ -67,6 +69,7 @@ class _NameReviewScreenState extends State<NameReviewScreen> {
           result: widget.result,
           nameMap: nameMap,
           audioFile: widget.audioFile,
+          displayName: widget.displayName,
         ),
       ),
     );
@@ -80,6 +83,7 @@ class _NameReviewScreenState extends State<NameReviewScreen> {
           jobId: widget.jobId,
           result: widget.result,
           audioFile: widget.audioFile,
+          displayName: widget.displayName,
         ),
       ),
     );

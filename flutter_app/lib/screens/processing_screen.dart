@@ -93,6 +93,8 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
           result: result,
           proposals: _vm.detectionResult!.proposals,
           audioFile: widget.audioFile,
+          displayName: widget.sourceFilename ??
+              recordingDisplayName(DateTime.now()),
         ),
       ),
     );

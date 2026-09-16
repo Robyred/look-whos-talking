@@ -6,11 +6,11 @@ import 'package:just_audio/just_audio.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../models/insights.dart';
+import '../theme.dart';
 import '../models/job_result.dart';
 import '../utils/speaker_utils.dart';
 import '../view_models/chat_view_model.dart';
 import '../view_models/insights_view_model.dart';
-import '../widgets/nav_button.dart';
 
 String _formatSec(double sec) {
   final m = (sec ~/ 60).toString().padLeft(2, '0');
@@ -27,11 +27,27 @@ String _formatDuration(double sec) {
   return '${s}s';
 }
 
+Tab _resultTab(IconData icon, String label) => Tab(
+      height: 44,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontSize: 13)),
+        ],
+      ),
+    );
+
 class ResultsScreen extends StatefulWidget {
   final String jobId;
   final DiarizationResult result;
   final Map<String, String> nameMap;
   final File? audioFile;
+
+  /// Human-readable conversation name for the file info card. Falls back to
+  /// the backend filename when null.
+  final String? displayName;
 
   const ResultsScreen({
     super.key,
@@ -39,14 +55,37 @@ class ResultsScreen extends StatefulWidget {
     required this.result,
     this.nameMap = const {},
     this.audioFile,
+    this.displayName,
   });
 
   @override
   State<ResultsScreen> createState() => _ResultsScreenState();
 }
 
-class _ResultsScreenState extends State<ResultsScreen> {
-  int _tab = 0;
+class _ResultsScreenState extends State<ResultsScreen>
+    with SingleTickerProviderStateMixin {
+  late final bool _hasAudio = widget.audioFile != null;
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: _tabCount, vsync: this)
+      ..addListener(() {
+        if (mounted) setState(() {});
+      });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  // Overview · Transcript · Insights · Q&A (+ Playback when audio exists).
+  int get _tabCount => 4 + (_hasAudio ? 1 : 0);
+
+  String get _fileName => widget.displayName ?? widget.result.filename;
 
   @override
   Widget build(BuildContext context) {
@@ -56,24 +95,31 @@ class _ResultsScreenState extends State<ResultsScreen> {
     if (!hasTranscript) {
       return Scaffold(
         appBar: AppBar(title: const Text('Results')),
-        body: _OverviewTab(result: widget.result, nameMap: widget.nameMap),
+        body: _OverviewTab(
+          result: widget.result,
+          nameMap: widget.nameMap,
+          displayName: _fileName,
+        ),
       );
     }
 
-    final tabs = <(IconData, String)>[
-      (Icons.bar_chart, 'Overview'),
-      (Icons.article, 'Transcript'),
-      (Icons.auto_awesome, 'Insights'),
-      (Icons.question_answer, 'Q&A'),
-      if (hasAudio) (Icons.headphones, 'Playback'),
+    final tabs = <Widget>[
+      _resultTab(Icons.bar_chart, 'Overview'),
+      _resultTab(Icons.article, 'Transcript'),
+      _resultTab(Icons.auto_awesome, 'Insights'),
+      _resultTab(Icons.question_answer, 'Q&A'),
+      if (hasAudio) _resultTab(Icons.headphones, 'Playback'),
     ];
 
     final content = <Widget>[
-      _OverviewTab(result: widget.result, nameMap: widget.nameMap),
+      _OverviewTab(
+          result: widget.result,
+          nameMap: widget.nameMap,
+          displayName: _fileName),
       _TranscriptTab(
           segments: widget.result.transcript,
           nameMap: widget.nameMap,
-          filename: widget.result.filename),
+          filename: _fileName),
       _InsightsTab(
           jobId: widget.jobId,
           result: widget.result,
@@ -94,26 +140,15 @@ class _ResultsScreenState extends State<ResultsScreen> {
         bottom: false,
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (var i = 0; i < tabs.length; i++)
-                    NavButton(
-                      icon: tabs[i].$1,
-                      label: tabs[i].$2,
-                      selected: _tab == i,
-                      onTap: () => setState(() => _tab = i),
-                    ),
-                ],
-              ),
+            TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: tabs,
             ),
-            const Divider(height: 1),
             Expanded(
               child: IndexedStack(
-                index: _tab,
+                index: _tabController.index,
                 children: content,
               ),
             ),
@@ -129,8 +164,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
 class _OverviewTab extends StatelessWidget {
   final DiarizationResult result;
   final Map<String, String> nameMap;
+  final String? displayName;
 
-  const _OverviewTab({required this.result, required this.nameMap});
+  const _OverviewTab({
+    required this.result,
+    required this.nameMap,
+    this.displayName,
+  });
 
   String _metricsText() {
     final buf = StringBuffer('Speaker metrics — ${result.filename}\n\n');
@@ -153,7 +193,7 @@ class _OverviewTab extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
-              _SummaryCard(result: result),
+              _SummaryCard(result: result, displayName: displayName),
               const SizedBox(height: 16),
               Text('Speakers', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 8),
@@ -181,8 +221,9 @@ class _OverviewTab extends StatelessWidget {
 
 class _SummaryCard extends StatelessWidget {
   final DiarizationResult result;
+  final String? displayName;
 
-  const _SummaryCard({required this.result});
+  const _SummaryCard({required this.result, this.displayName});
 
   @override
   Widget build(BuildContext context) {
@@ -194,11 +235,11 @@ class _SummaryCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              result.filename,
+              displayName ?? result.filename,
               style: Theme.of(context)
                   .textTheme
                   .titleSmall
-                  ?.copyWith(color: Colors.grey[600]),
+                  ?.copyWith(color: kMuted),
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 12),

@@ -80,6 +80,15 @@ ThemeData buildAppTheme() {
       style: TextButton.styleFrom(foregroundColor: kPrimaryCoral),
     ),
     dividerTheme: const DividerThemeData(color: kOutline, thickness: 1),
+    tabBarTheme: const TabBarThemeData(
+      labelColor: kOnSurface,
+      unselectedLabelColor: kMuted,
+      indicatorColor: kPrimaryCoral,
+      indicatorSize: TabBarIndicatorSize.tab,
+      dividerColor: Colors.transparent,
+      labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      unselectedLabelStyle: TextStyle(fontSize: 13),
+    ),
     dialogTheme: const DialogThemeData(
       backgroundColor: kSurfaceVariant,
       surfaceTintColor: Colors.transparent,

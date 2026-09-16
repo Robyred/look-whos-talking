@@ -103,6 +103,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
           jobId: record.id,
           result: result,
           audioFile: audioFile,
+          displayName: record.filename,
         ),
       ),
     );
