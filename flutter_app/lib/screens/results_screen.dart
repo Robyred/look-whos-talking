@@ -251,6 +251,7 @@ class _SummaryCard extends StatelessWidget {
                   icon: Icons.people,
                   label:
                       '${result.speakerCount} speaker${result.speakerCount == 1 ? '' : 's'}',
+                  color: kSecondaryTeal,
                 ),
                 _StatChip(
                   icon: Icons.timer,
@@ -268,7 +269,7 @@ class _SummaryCard extends StatelessWidget {
               _StatChip(
                 icon: Icons.layers,
                 label: '${_formatSec(result.overlapSec)} overlap',
-                color: Colors.orange,
+                color: kTertiaryAmber,
               ),
             ],
           ],
@@ -287,7 +288,7 @@ class _StatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? Colors.indigo;
+    final c = color ?? kMuted;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -371,7 +372,7 @@ class _SpeakerCard extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(_formatSec(speaker.durationSec),
                       style:
-                          TextStyle(fontSize: 12, color: Colors.grey[500])),
+                          TextStyle(fontSize: 12, color: kMuted)),
                 ],
               ),
             ),
@@ -463,7 +464,7 @@ class _TranscriptTab extends StatelessWidget {
                         const SizedBox(width: 6),
                         Text(_formatSec(seg.start),
                             style: TextStyle(
-                                fontSize: 11, color: Colors.grey[400])),
+                                fontSize: 11, color: kMuted)),
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -563,7 +564,7 @@ class _IdleView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.auto_awesome, size: 56, color: Colors.indigo[200]),
+            Icon(Icons.auto_awesome, size: 56, color: kSecondaryTeal),
             const SizedBox(height: 20),
             Text('AI Insights',
                 style: Theme.of(context).textTheme.titleLarge),
@@ -574,7 +575,7 @@ class _IdleView extends StatelessWidget {
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium
-                  ?.copyWith(color: Colors.grey[600]),
+                  ?.copyWith(color: kMuted),
             ),
             const SizedBox(height: 24),
             FilledButton.icon(
@@ -603,14 +604,14 @@ class _FailedView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 48, color: Colors.red),
+            const Icon(Icons.error_outline, size: 48, color: kPrimaryCoral),
             const SizedBox(height: 16),
             Text(error,
                 textAlign: TextAlign.center,
                 style: Theme.of(context)
                     .textTheme
                     .bodyMedium
-                    ?.copyWith(color: Colors.grey[600])),
+                    ?.copyWith(color: kMuted)),
             const SizedBox(height: 20),
             OutlinedButton.icon(
               onPressed: onRetry,
@@ -656,7 +657,10 @@ class _InsightsView extends StatelessWidget {
         if (insights.speakerNames
             .any((s) => s.proposedName != null)) ...[
           _SectionHeader(
-              icon: Icons.person, title: 'Speaker names identified by AI'),
+            icon: Icons.person,
+            title: 'Speaker names identified by AI',
+            color: kSecondaryTeal,
+          ),
           const SizedBox(height: 8),
           ...insights.speakerNames
               .where((s) => s.proposedName != null)
@@ -684,10 +688,10 @@ class _InsightsView extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Text(fallback,
-                      style: TextStyle(color: Colors.grey[600])),
+                      style: TextStyle(color: kMuted)),
                   const SizedBox(width: 6),
                   const Icon(Icons.arrow_forward, size: 14,
-                      color: Colors.grey),
+                      color: kMuted),
                   const SizedBox(width: 6),
                   Text(s.proposedName!,
                       style:
@@ -704,7 +708,10 @@ class _InsightsView extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             _SectionHeader(
-                icon: Icons.checklist, title: 'Action items'),
+              icon: Icons.checklist,
+              title: 'Action items',
+              color: kPrimaryCoral,
+            ),
             IconButton(
               icon: const Icon(Icons.share, size: 20),
               tooltip: 'Share action items',
@@ -718,9 +725,15 @@ class _InsightsView extends StatelessWidget {
         ),
         if (insights.actionItems.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text('No action items identified.',
-                style: TextStyle(color: Colors.grey[500])),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Column(
+              children: [
+                Icon(Icons.check_circle_outline, size: 28, color: kMuted),
+                const SizedBox(height: 8),
+                Text('No action items identified.',
+                    style: TextStyle(color: kMuted)),
+              ],
+            ),
           )
         else
           ...insights.actionItems.map((item) => _ActionItemCard(item: item)),
@@ -732,7 +745,10 @@ class _InsightsView extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             _SectionHeader(
-                icon: Icons.summarize, title: 'Meeting minutes'),
+              icon: Icons.summarize,
+              title: 'Meeting minutes',
+              color: kTertiaryAmber,
+            ),
             IconButton(
               icon: const Icon(Icons.share, size: 20),
               tooltip: 'Share minutes',
@@ -756,15 +772,20 @@ class _InsightsView extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   final IconData icon;
   final String title;
+  final Color color;
 
-  const _SectionHeader({required this.icon, required this.title});
+  const _SectionHeader({
+    required this.icon,
+    required this.title,
+    this.color = kSecondaryTeal,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 18, color: Colors.indigo),
+        Icon(icon, size: 18, color: color),
         const SizedBox(width: 6),
         Text(title, style: Theme.of(context).textTheme.titleSmall),
       ],
@@ -788,7 +809,7 @@ class _ActionItemCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Icon(Icons.radio_button_unchecked,
-                size: 18, color: Colors.indigo),
+                size: 18, color: kMuted),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
@@ -836,10 +857,10 @@ class _Pill extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 12, color: Colors.grey[500]),
+        Icon(icon, size: 12, color: kMuted),
         const SizedBox(width: 3),
         Text(label,
-            style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            style: TextStyle(fontSize: 12, color: kMuted)),
       ],
     );
   }
@@ -924,7 +945,7 @@ class _ChatTabState extends State<_ChatTab> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(Icons.chat_bubble_outline,
-                                size: 56, color: Colors.indigo[200]),
+                                size: 56, color: kSecondaryTeal),
                             const SizedBox(height: 16),
                             Text('Ask about the conversation',
                                 style: Theme.of(context).textTheme.titleMedium),
@@ -935,7 +956,7 @@ class _ChatTabState extends State<_ChatTab> {
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
-                                  ?.copyWith(color: Colors.grey[500]),
+                                  ?.copyWith(color: kMuted),
                             ),
                           ],
                         ),
@@ -976,10 +997,8 @@ class _ChatTabState extends State<_ChatTab> {
                                 ),
                                 decoration: BoxDecoration(
                                   color: isUser
-                                      ? Colors.indigo
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .surfaceContainerHighest,
+                                      ? kPrimaryCoral
+                                      : kSurfaceVariant,
                                   borderRadius: BorderRadius.only(
                                     topLeft: const Radius.circular(16),
                                     topRight: const Radius.circular(16),
@@ -992,7 +1011,7 @@ class _ChatTabState extends State<_ChatTab> {
                                   style: TextStyle(
                                     fontSize: 15,
                                     height: 1.4,
-                                    color: isUser ? Colors.white : null,
+                                    color: isUser ? kBackground : kOnSurface,
                                   ),
                                 ),
                               ),
@@ -1149,12 +1168,12 @@ class _PlaybackTabState extends State<_PlaybackTab> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const Icon(Icons.error_outline, size: 48, color: kPrimaryCoral),
               const SizedBox(height: 16),
               Text(
                 'Playback unavailable\n$_error',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[600]),
+                style: TextStyle(color: kMuted),
               ),
             ],
           ),
@@ -1211,14 +1230,18 @@ class _PlaybackTabState extends State<_PlaybackTab> {
                                       horizontal: 8, vertical: 3),
                                   decoration: BoxDecoration(
                                     color: isActive
-                                        ? color.withAlpha(60)
-                                        : color.withAlpha(26),
+                                        ? color.withValues(alpha: 0.24)
+                                        : color.withValues(alpha: 0.10),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
                                     label,
                                     style: TextStyle(
-                                      color: color,
+                                      // Full colour while this speaker is
+                                      // playing, faded otherwise.
+                                      color: isActive
+                                          ? color
+                                          : color.withValues(alpha: 0.4),
                                       fontSize: 11,
                                       fontWeight: isActive
                                           ? FontWeight.bold
@@ -1230,7 +1253,7 @@ class _PlaybackTabState extends State<_PlaybackTab> {
                                 Text(
                                   _formatSec(seg.start),
                                   style: TextStyle(
-                                      fontSize: 11, color: Colors.grey[400]),
+                                      fontSize: 11, color: kMuted),
                                 ),
                               ],
                             ),
@@ -1275,7 +1298,7 @@ class _TransportBar extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
-            top: BorderSide(color: Colors.grey.withAlpha(50), width: 1)),
+            top: BorderSide(color: kOutline, width: 1)),
       ),
       padding: EdgeInsets.fromLTRB(
         16,
@@ -1305,7 +1328,7 @@ class _TransportBar extends StatelessWidget {
                         child: Text(
                           _formatSec(posMs / 1000),
                           style: TextStyle(
-                              fontSize: 12, color: Colors.grey[600]),
+                              fontSize: 12, color: kMuted),
                         ),
                       ),
                       Expanded(
@@ -1324,7 +1347,7 @@ class _TransportBar extends StatelessWidget {
                           _formatSec(totalMs / 1000),
                           textAlign: TextAlign.right,
                           style: TextStyle(
-                              fontSize: 12, color: Colors.grey[600]),
+                              fontSize: 12, color: kMuted),
                         ),
                       ),
                     ],
