@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../services/cloud_storage_provider.dart';
+import '../theme.dart';
 import '../services/conversation_store.dart';
 import 'processing_screen.dart';
 
@@ -200,37 +201,96 @@ class _TimerDisplay extends StatelessWidget {
   }
 }
 
-class _MicButton extends StatelessWidget {
+class _MicButton extends StatefulWidget {
   final bool isRecording;
   final VoidCallback onTap;
 
   const _MicButton({required this.isRecording, required this.onTap});
 
   @override
+  State<_MicButton> createState() => _MicButtonState();
+}
+
+class _MicButtonState extends State<_MicButton>
+    with SingleTickerProviderStateMixin {
+  static const _size = 88.0;
+
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isRecording) _pulse.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MicButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isRecording && !_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    } else if (!widget.isRecording && _pulse.isAnimating) {
+      _pulse.stop();
+      _pulse.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Center(
       child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          width: 96,
-          height: 96,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isRecording ? Colors.red : Colors.indigo,
-            boxShadow: [
-              BoxShadow(
-                color: (isRecording ? Colors.red : Colors.indigo)
-                    .withAlpha(77),
-                blurRadius: isRecording ? 32 : 12,
-                spreadRadius: isRecording ? 8 : 2,
+        onTap: widget.onTap,
+        child: SizedBox(
+          width: _size * 1.3,
+          height: _size * 1.3,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              // Pulsing ring while recording (DESIGN_PLAN_v1 §5.2).
+              if (widget.isRecording)
+                AnimatedBuilder(
+                  animation: _pulse,
+                  builder: (context, _) {
+                    final scale = 1.0 + 0.3 * _pulse.value;
+                    return Container(
+                      width: _size * scale,
+                      height: _size * scale,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: kPrimaryCoral.withValues(alpha: 0.15),
+                      ),
+                    );
+                  },
+                ),
+              Container(
+                width: _size,
+                height: _size,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: kPrimaryCoral,
+                  boxShadow: [
+                    BoxShadow(
+                      color: kPrimaryCoral.withValues(alpha: 0.35),
+                      blurRadius: 16,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  widget.isRecording ? Icons.stop : Icons.mic,
+                  color: kBackground,
+                  size: 40,
+                ),
               ),
             ],
-          ),
-          child: Icon(
-            isRecording ? Icons.stop : Icons.mic,
-            color: Colors.white,
-            size: 44,
           ),
         ),
       ),

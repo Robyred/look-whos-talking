@@ -7,6 +7,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../services/cloud_storage_provider.dart';
+import '../theme.dart';
 import '../services/conversation_store.dart';
 import 'processing_screen.dart';
 
@@ -116,7 +117,7 @@ class _UploadScreenState extends State<UploadScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const Spacer(),
-                const Icon(Icons.audio_file, size: 72, color: Colors.deepOrange),
+                const Icon(Icons.graphic_eq, size: 72, color: kSecondaryTeal),
                 const SizedBox(height: 24),
                 GestureDetector(
                   onTap: _pickFile,
@@ -132,8 +133,8 @@ class _UploadScreenState extends State<UploadScreen> {
                                 : Icons.cloud_upload_outlined,
                             size: 48,
                             color: _selectedName != null
-                                ? Colors.green
-                                : Colors.grey[400],
+                                ? kSecondaryTeal
+                                : kMuted,
                           ),
                           const SizedBox(height: 12),
                           Text(
@@ -152,7 +153,7 @@ class _UploadScreenState extends State<UploadScreen> {
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall
-                                  ?.copyWith(color: Colors.grey[400]),
+                                  ?.copyWith(color: kMuted),
                             ),
                           ],
                         ],
@@ -248,8 +249,8 @@ class _AudioPreview extends StatelessWidget {
                       },
                     ),
                     Text(_fmt(pos),
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey[600])),
+                        style: const TextStyle(
+                            fontSize: 12, color: kMuted)),
                     Expanded(
                       child: Slider(
                         value: totalMs > 0 ? posMs : 0,
@@ -261,8 +262,8 @@ class _AudioPreview extends StatelessWidget {
                       ),
                     ),
                     Text(_fmt(total),
-                        style: TextStyle(
-                            fontSize: 12, color: Colors.grey[600])),
+                        style: const TextStyle(
+                            fontSize: 12, color: kMuted)),
                   ],
                 );
               },
@@ -283,12 +284,12 @@ class DottedBorder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? Colors.green : Colors.grey[300]!;
+    final color = selected ? kSecondaryTeal : kOutline;
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: color, width: 2),
         borderRadius: BorderRadius.circular(16),
-        color: selected ? Colors.green.withAlpha(13) : Colors.grey[50],
+        color: selected ? kSecondaryTeal.withValues(alpha: 0.08) : kSurface,
       ),
       child: child,
     );
