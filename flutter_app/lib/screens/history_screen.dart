@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../models/conversation_record.dart';
+import '../theme.dart';
 import '../models/sync_summary.dart';
 import '../view_models/history_view_model.dart';
 import 'results_screen.dart';
@@ -220,17 +221,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
             onPressed: () => Navigator.of(ctx).pop(_DeleteChoice.none),
             child: const Text('Cancel'),
           ),
-          if (synced)
-            TextButton(
-              onPressed: () =>
-                  Navigator.of(ctx).pop(_DeleteChoice.localOnly),
-              child: const Text('Delete (local)'),
-            ),
+          // Safer, default action is the filled button; cloud removal is the
+          // outlined (irreversible) one — DESIGN_PLAN_v1 §5.4.
           FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(
-                synced ? _DeleteChoice.localAndCloud : _DeleteChoice.localOnly),
-            child: Text(synced ? 'Delete & remove from cloud' : 'Delete'),
+            onPressed: () =>
+                Navigator.of(ctx).pop(_DeleteChoice.localOnly),
+            child: Text(synced ? 'Delete (local)' : 'Delete'),
           ),
+          if (synced)
+            OutlinedButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(_DeleteChoice.localAndCloud),
+              child: const Text('Delete & remove from cloud'),
+            ),
         ],
       ),
     ).then((c) => c ?? _DeleteChoice.none);
@@ -296,16 +299,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
             onPressed: () => Navigator.of(ctx).pop(_DeleteChoice.none),
             child: const Text('Cancel'),
           ),
-          if (offerCloud)
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(_DeleteChoice.localOnly),
-              child: const Text('Delete (local)'),
-            ),
           FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(
-                offerCloud ? _DeleteChoice.localAndCloud : _DeleteChoice.localOnly),
-            child: Text(offerCloud ? 'Delete & remove from cloud' : 'Delete'),
+            onPressed: () => Navigator.of(ctx).pop(_DeleteChoice.localOnly),
+            child: Text(offerCloud ? 'Delete (local)' : 'Delete'),
           ),
+          if (offerCloud)
+            OutlinedButton(
+              onPressed: () =>
+                  Navigator.of(ctx).pop(_DeleteChoice.localAndCloud),
+              child: const Text('Delete & remove from cloud'),
+            ),
         ],
       ),
     ).then((c) => c ?? _DeleteChoice.none);
@@ -454,7 +457,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   style: Theme.of(context)
                       .textTheme
                       .bodySmall
-                      ?.copyWith(color: Colors.grey[600]),
+                      ?.copyWith(color: kMuted),
                 ),
                 const SizedBox(height: 16),
                 OutlinedButton(onPressed: _vm.load, child: const Text('Retry')),
@@ -466,9 +469,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
         if (_vm.records.isEmpty) {
           return const Center(child: Text('No conversations yet'));
         }
-        return ListView.separated(
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 8),
           itemCount: _vm.records.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final record = _vm.records[index];
             return _buildRow(context, record);
@@ -480,10 +483,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _buildRow(BuildContext context, ConversationRecord record) {
     final hasAudio = record.audioPath != null;
     final selected = _selecting && _selectedIds.contains(record.id);
+    final isRecording = record.filename.startsWith('Recording ');
+    final title = isRecording ? 'Recording' : record.filename;
+    final when = _formatDate(record.createdAt);
+    final meta = '$when · ${_formatDuration(record.durationSec)} · '
+        '${record.speakerCount} speaker${record.speakerCount == 1 ? '' : 's'}';
 
     final tile = ListTile(
       onTap: () => _openRecord(record),
       onLongPress: _selecting ? null : () => _showRowMenu(record),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       leading: _selecting
           ? Checkbox(
               value: selected,
@@ -491,15 +500,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
             )
           : null,
       title: Text(
-        record.filename,
+        title,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: kOnSurface),
       ),
-      subtitle: Text(
-        '${_formatDate(record.createdAt)} · '
-        '${_formatDuration(record.durationSec)} · '
-        '${record.speakerCount} speaker${record.speakerCount == 1 ? '' : 's'}',
-      ),
+      subtitle: Text(meta, style: kMetadataText),
       selected: selected,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -507,33 +513,40 @@ class _HistoryScreenState extends State<HistoryScreen> {
           Icon(
             record.isSynced ? Icons.cloud_done : Icons.cloud_upload,
             size: 18,
-            color: record.isSynced ? Colors.green.shade600 : Colors.grey.shade500,
+            // Synced = teal, pending = amber (DESIGN_PLAN_v1 §5.4).
+            color: record.isSynced ? kSecondaryTeal : kTertiaryAmber,
           ),
           const SizedBox(width: 10),
           Icon(
             hasAudio ? Icons.graphic_eq : Icons.music_off,
             size: 18,
-            color: hasAudio ? Colors.indigo : Colors.grey.shade400,
+            color: kMuted,
           ),
           const SizedBox(width: 4),
-          const Icon(Icons.chevron_right, color: Colors.grey),
+          const Icon(Icons.chevron_right, color: kOutline),
         ],
       ),
     );
 
-    if (_selecting) return tile;
+    final card = Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: tile,
+    );
+
+    if (_selecting) return card;
     return Dismissible(
       key: ValueKey('history-${record.id}'),
       direction: DismissDirection.endToStart,
       confirmDismiss: (_) => _confirmSwipeDelete(record),
       onDismissed: (_) => _vm.delete(record.id),
       background: Container(
-        color: Colors.red,
+        color: kPrimaryCoral,
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
-        child: const Icon(Icons.delete, color: Colors.white),
+        child: const Icon(Icons.delete, color: kBackground),
       ),
-      child: tile,
+      child: card,
     );
   }
 
