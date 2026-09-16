@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/conversation_record.dart';
+import '../theme.dart';
 import '../services/cloud_storage_provider.dart';
 import '../services/conversation_store.dart';
 import '../services/storage_cleanup_service.dart';
@@ -153,38 +154,63 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 600),
-            child: Padding(
-              padding: const EdgeInsets.all(32.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+            child: LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints:
+                      BoxConstraints(minHeight: constraints.maxHeight),
+                  child: IntrinsicHeight(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
                   const Spacer(),
-                  const Icon(Icons.record_voice_over,
-                      size: 72, color: Colors.indigo),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Look Who\'s Talking',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
+                  Image.asset(
+                    'assets/images/lwt_mark.png',
+                    width: 96,
+                    height: 96,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Upload or record a conversation\nto identify speakers',
+                  const SizedBox(height: 16),
+                  // Two-tone wordmark, matching the lockup (DESIGN_PLAN_v1 §3).
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        const TextSpan(
+                          text: 'Look Who\'s ',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w300,
+                            color: kOnSurface,
+                          ),
+                        ),
+                        TextSpan(
+                          text: 'Talking',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: kPrimaryCoral,
+                          ),
+                        ),
+                      ],
+                    ),
                     textAlign: TextAlign.center,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodyMedium
-                        ?.copyWith(color: Colors.grey[600]),
+                    style: const TextStyle(fontSize: 32),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'VOICE INTELLIGENCE',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: kMuted,
+                      fontSize: 11,
+                      letterSpacing: 2.5,
+                    ),
                   ),
                   const Spacer(),
                   _ActionCard(
                     icon: Icons.mic,
                     label: 'Record Audio',
                     subtitle: 'Use your phone\'s microphone',
-                    color: Colors.indigo,
+                    color: kPrimaryCoral,
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -200,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     icon: Icons.upload_file,
                     label: 'Upload File',
                     subtitle: 'WAV, MP3, M4A, FLAC',
-                    color: Colors.deepOrange,
+                    color: kSecondaryTeal,
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -212,7 +238,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const Spacer(),
-                ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
@@ -277,12 +307,12 @@ class _ActionCard extends StatelessWidget {
                         style: Theme.of(context)
                             .textTheme
                             .bodySmall
-                            ?.copyWith(color: Colors.grey[600])),
+                            ?.copyWith(color: kMuted)),
                   ],
                 ),
               ),
               const Spacer(),
-              Icon(Icons.chevron_right, color: Colors.grey[400]),
+              const Icon(Icons.chevron_right, color: kOutline),
             ],
           ),
         ),
