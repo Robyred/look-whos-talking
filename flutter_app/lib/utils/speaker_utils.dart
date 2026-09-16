@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 
+/// Brand speaker colours (DESIGN_PLAN_v1 §2): coral, teal, amber, violet.
+/// Speakers 5+ repeat the palette at 70% opacity.
 const speakerColors = [
-  Color(0xFF4A90D9),
-  Color(0xFFE67E22),
-  Color(0xFF27AE60),
-  Color(0xFF9B59B6),
-  Color(0xFFE74C3C),
-  Color(0xFF1ABC9C),
-  Color(0xFFF39C12),
-  Color(0xFF2C3E50),
+  Color(0xFFFF6B6B), // coral
+  Color(0xFF4ECDC4), // teal
+  Color(0xFFFFB347), // amber
+  Color(0xFF9B7FE8), // violet
 ];
 
 Color colorForSpeaker(String speakerId) {
   final idx = int.tryParse(speakerId.split('_').last) ?? 0;
-  return speakerColors[idx % speakerColors.length];
+  final base = speakerColors[idx % speakerColors.length];
+  // 5th speaker onward: same palette, faded, so they stay distinguishable.
+  if (idx >= speakerColors.length) return base.withValues(alpha: 0.7);
+  return base;
 }
 
 // SPEAKER_00 → "Speaker 1", or the mapped name if present.

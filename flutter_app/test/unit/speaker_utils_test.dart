@@ -3,20 +3,26 @@ import 'package:look_whos_talking/utils/speaker_utils.dart';
 
 void main() {
   group('colorForSpeaker', () {
-    test('SPEAKER_00 returns the first palette color', () {
+    test('SPEAKER_00 returns the first brand colour (coral)', () {
       expect(colorForSpeaker('SPEAKER_00'), equals(speakerColors[0]));
     });
 
-    test('SPEAKER_07 returns the eighth palette color (index 7)', () {
-      expect(colorForSpeaker('SPEAKER_07'), equals(speakerColors[7]));
+    test('SPEAKER_03 returns the fourth brand colour (violet)', () {
+      expect(colorForSpeaker('SPEAKER_03'), equals(speakerColors[3]));
     });
 
-    test('SPEAKER_08 wraps around to index 0 (palette has 8 entries)', () {
-      expect(colorForSpeaker('SPEAKER_08'), equals(speakerColors[0]));
+    test('SPEAKER_04 repeats the palette at 70% opacity (5th speaker)', () {
+      expect(
+        colorForSpeaker('SPEAKER_04'),
+        equals(speakerColors[0].withValues(alpha: 0.7)),
+      );
     });
 
-    test('SPEAKER_09 wraps to index 1', () {
-      expect(colorForSpeaker('SPEAKER_09'), equals(speakerColors[1]));
+    test('SPEAKER_05 repeats index 1 faded', () {
+      expect(
+        colorForSpeaker('SPEAKER_05'),
+        equals(speakerColors[1].withValues(alpha: 0.7)),
+      );
     });
 
     test('ID with no trailing number falls back to index 0', () {

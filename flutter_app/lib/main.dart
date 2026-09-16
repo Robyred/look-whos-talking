@@ -6,6 +6,7 @@ import 'services/conversation_store.dart';
 import 'services/dropbox_services.dart';
 import 'services/google_drive_services.dart';
 import 'services/onedrive_services.dart';
+import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,25 +43,7 @@ class LookWhosTalkingApp extends StatelessWidget {
     return MaterialApp(
       title: 'Look Who\'s Talking',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-        useMaterial3: true,
-        cardTheme: const CardThemeData(elevation: 1),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            minimumSize: const Size.fromHeight(52),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-        outlinedButtonTheme: OutlinedButtonThemeData(
-          style: OutlinedButton.styleFrom(
-            minimumSize: const Size.fromHeight(52),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-      ),
+      theme: buildAppTheme(),
       home: HomeScreen(
         store: store,
         cloud: cloud,
