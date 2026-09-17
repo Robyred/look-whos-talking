@@ -16,7 +16,14 @@ Jack's DeepSeek preferences.md
 .dsh/
 
 # Editors
-.vscode/
+# Ignore .vscode contents by default, but share project-level config.
+# NOTE: must be ".vscode/*", not ".vscode/" — git cannot re-include a file
+# whose parent directory is excluded, so the negations below would not work.
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 .idea/
 
 # OS
