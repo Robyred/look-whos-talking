@@ -27,7 +27,7 @@ def make_wav_bytes(duration_sec: float = 10.0) -> bytes:
     return buf.getvalue()
 
 
-def fake_diarise(audio):
+def fake_diarise(audio, sample_rate=16_000, min_speakers=None, max_speakers=None):
     return [("SPEAKER_00", 0.0, 5.0), ("SPEAKER_01", 5.0, 10.0)]
 
 
