@@ -8,8 +8,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# CPU PyTorch. This image runs on hosts with no NVIDIA GPU (Railway, CI), where
+# the CUDA build only adds ~5 GB of inert nvidia-* wheels. requirements-ci.txt is
+# the full runtime set pinned to CPU builds, and it resolves without --no-deps.
+COPY requirements-ci.txt .
+RUN pip install --no-cache-dir -r requirements-ci.txt
 
 COPY . .
 

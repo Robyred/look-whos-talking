@@ -31,11 +31,29 @@ def fake_diarise(audio, sample_rate=16_000, min_speakers=None, max_speakers=None
     return [("SPEAKER_00", 0.0, 5.0), ("SPEAKER_01", 5.0, 10.0)]
 
 
+def fake_transcribe(audio, timeline, language=None):
+    """
+    Stand-in for the real WhisperX transcriber.
+
+    These tests assert on job status, speaker count and filenames — never on
+    transcript text. The upload is a 440 Hz sine tone, which contains no speech,
+    so WhisperX's VAD returns zero utterances and the real call contributes
+    nothing to any assertion while costing ~33s and a model download per run.
+
+    Real transcription belongs in a separate test driven by actual speech audio.
+    """
+    return [
+        {"speaker_id": speaker, "start": start, "end": end, "text": f"speech from {speaker}"}
+        for speaker, start, end in timeline
+    ]
+
+
 @pytest.fixture(autouse=True)
 def patch_embedder():
     with patch.object(embedder_module, "_pipeline", MagicMock()):
         with patch("backend.routes.diarise", side_effect=fake_diarise):
-            yield
+            with patch("backend.routes.transcribe", side_effect=fake_transcribe):
+                yield
 
 
 @pytest.fixture(autouse=True)

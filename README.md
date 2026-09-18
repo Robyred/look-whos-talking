@@ -52,8 +52,27 @@ cp .env.example .env
 
 | File | Use when |
 |---|---|
-| `requirements.lock.txt` | **Linux x86_64** — reproduces the exact working set, 178 pinned packages |
+| `requirements-ci.txt` | **Recommended for most installs.** CPU-only PyTorch, 145 pinned packages, resolves cleanly with no flags. Used by CI and the Dockerfile |
+| `requirements.lock.txt` | Exact record of the dev machine, including its CUDA PyTorch build. Requires `--no-deps` |
 | `requirements.txt` | macOS, ARM, or deliberate upgrades — loose `>=` ranges |
+
+**Start with `requirements-ci.txt`.** It is the full application dependency set
+(not a trimmed test-only list), just with CPU instead of CUDA PyTorch:
+
+```bash
+pip install -r requirements-ci.txt
+```
+
+This works because it pins the one combination every library agrees on —
+`torch 2.8.0+cpu`, `torchvision 0.23.0+cpu`, `torchcodec 0.7.0` — so pip's
+resolver can solve it. It also drops about 5 GB of `nvidia-*` CUDA wheels that do
+nothing without an NVIDIA GPU.
+
+### The lock file (exact dev record)
+
+| File | Use when |
+|---|---|
+| `requirements.lock.txt` | You need byte-for-byte parity with the original dev machine |
 
 Two things about the lock file are **not optional**:
 
@@ -86,11 +105,8 @@ are **not on PyPI**. Without that line pip fails with
 **On macOS or ARM**, use `requirements.txt` instead — the `+cu130` wheels are
 Linux x86_64 only.
 
-**On a machine with no NVIDIA GPU** those CUDA wheels are inert anyway. The
-original machine has an AMD Radeon and reports `torch.cuda.is_available() ==
-False`, so 5.0 GB of `nvidia-*` packages do nothing. For a much smaller install,
-swap the index line for `--extra-index-url https://download.pytorch.org/whl/cpu`
-and pin `torch 2.8.x+cpu`, which also satisfies whisperx's constraint.
+**On a machine with no NVIDIA GPU** those CUDA wheels are inert anyway — see
+`requirements-ci.txt` above, which is the CPU-only equivalent of this file.
 
 ### HuggingFace model access (required)
 
@@ -124,6 +140,15 @@ Endpoints: `GET /health`, `GET /`, `POST /diarize`, `GET /conversations`,
 ```bash
 pytest
 ```
+
+The suite takes about 12 seconds and needs no credentials or network access —
+`HF_TOKEN` and `DEEPSEEK_API_KEY` are not required. The pyannote pipeline, the
+diarisation call and the WhisperX transcriber are all replaced with test doubles,
+so no models are downloaded.
+
+> Transcription itself is **not** covered by these tests: the uploads are
+> synthetic tones containing no speech. Real transcription needs a separate test
+> driven by actual speech audio.
 
 **Web UI:** open `frontend/index.html`.
 
@@ -177,11 +202,36 @@ runtime; sample audio must be re-downloaded on a fresh machine.
 | `WHISPER_CACHE` | No | Cache directory for WhisperX models |
 | `PORT` | No | Server port for the Docker entrypoint (default 8765) |
 
+## Continuous integration
+
+`.github/workflows/tests.yml` runs the suite on every push and pull request, using
+`requirements-ci.txt`.
+
+| | |
+|---|---|
+| Test time | ~12 seconds, plus dependency install |
+| Secrets needed | None — the workflow has no configuration |
+| Runner | `ubuntu-latest`, Python 3.11 |
+
+Superseded runs on the same branch are cancelled automatically so they do not
+consume Actions minutes. On a private repo, GitHub Free includes 2,000 Actions
+minutes per month.
+
 ## Deployment
 
 `Dockerfile` builds a Python 3.11 slim image with `ffmpeg` and `libsndfile1`
 preinstalled, and starts `uvicorn backend.main:app`. Model caches are directed
 to `/model_cache` via `HF_HOME` and `WHISPER_CACHE`.
+
+It installs from `requirements-ci.txt` — CPU PyTorch — because the container runs
+on hosts with no NVIDIA GPU, where the CUDA build would add ~5 GB for nothing.
+
+`.dockerignore` excludes `.venv/`, `data/`, `.dsh/` and `flutter_app/build/`.
+Without those exclusions `COPY . .` would add several GB to the build context.
+
+> **Not yet verified:** the CPU Dockerfile change has not been built — Docker is
+> not installed on the machine where it was made. Verify with
+> `docker build -t lwt .` and check the resulting size.
 
 `railway.toml` configures Railway deployment with a `/health` healthcheck.
 If this repository is private, confirm Railway's GitHub app still has access to

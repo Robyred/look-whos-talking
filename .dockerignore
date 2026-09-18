@@ -1,10 +1,14 @@
 .venv/
 data/
+.dsh/
 .git/
 .env
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
+.github/
+flutter_app/build/
 Jack's documentation etc/
 .claude/
 .idea/
